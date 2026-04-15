@@ -2,10 +2,12 @@ import { useEffect, useRef } from 'react'
 import type { ForestSettings } from '@/engine/forest'
 import { createScene, type SceneContext } from '@/three/scene'
 import type { SpeciesConfig } from '@/engine/species'
+import type { WindSettings } from '@/three/wind'
 
 interface CanvasProps {
   config: SpeciesConfig
   forest: ForestSettings
+  wind: WindSettings
   variationSeed: number
   sceneRef: React.RefObject<SceneContext | null>
 }
@@ -13,6 +15,7 @@ interface CanvasProps {
 export function TreeCanvas({
   config,
   forest,
+  wind,
   variationSeed,
   sceneRef,
 }: CanvasProps) {
@@ -25,7 +28,7 @@ export function TreeCanvas({
     let isStale = false
     let ctx: SceneContext | null = null
 
-    void createScene(canvas, config, forest, variationSeed).then((scene) => {
+    void createScene(canvas, config, forest, wind, variationSeed).then((scene) => {
       if (isStale) {
         scene.dispose()
         return

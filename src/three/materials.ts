@@ -6,8 +6,10 @@ import {
   Fn,
   positionLocal,
   normalLocal,
+  instanceIndex,
 } from 'three/tsl'
 import type { BarkTextures } from './textures'
+import type { WindBufferNode } from './wind'
 
 export function createBarkMaterial(
   textures: BarkTextures
@@ -27,7 +29,8 @@ export function createBarkMaterial(
 }
 
 export function createLeafMaterial(
-  leafMap: THREE.Texture
+  leafMap: THREE.Texture,
+  windOffsetBuffer: WindBufferNode | null = null
 ): THREE.MeshStandardNodeMaterial {
   const material = new THREE.MeshStandardNodeMaterial()
 
@@ -43,6 +46,12 @@ export function createLeafMaterial(
   material.emissiveNode = Fn(() => {
     return leafTex.rgb.mul(0.08)
   })()
+
+  if (windOffsetBuffer) {
+    material.positionNode = positionLocal.add(
+      windOffsetBuffer.element(instanceIndex)
+    )
+  }
 
   return material
 }

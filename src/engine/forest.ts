@@ -1,6 +1,9 @@
 import type { Vec3 } from './lsystem'
 
+export type ForestMode = 'custom' | 'giant'
+
 export interface ForestSettings {
+  mode: ForestMode
   count: number
   radius: number
 }
@@ -14,6 +17,18 @@ export interface ForestInstance {
   rotationY: number
   scale: number
   seed: number
+}
+
+export const SINGLE_TREE_FOREST: ForestSettings = {
+  mode: 'custom',
+  count: 1,
+  radius: 18,
+}
+
+export const GIANT_FOREST_SETTINGS: ForestSettings = {
+  mode: 'giant',
+  count: 120,
+  radius: 48,
 }
 
 function createSeededRandom(seed: number) {
@@ -49,8 +64,14 @@ export function buildForestLayout(
   }
 
   const goldenAngle = Math.PI * (3 - Math.sqrt(5))
-  const spreadFactor = Math.min(0.8, 0.58 + count * 0.015)
+  const spreadFactor =
+    options.mode === 'giant'
+      ? Math.min(0.72, 0.46 + count * 0.003)
+      : Math.min(0.8, 0.58 + count * 0.015)
   const clusterRadius = radius * spreadFactor
+  const scaleMin = options.mode === 'giant' ? 0.92 : 0.78
+  const scaleRange = options.mode === 'giant' ? 0.16 : 0.38
+  const angleJitter = options.mode === 'giant' ? 0.28 : 0.45
 
   for (let i = 1; i < count; i++) {
     const t = i / (count - 1)
@@ -59,7 +80,7 @@ export function buildForestLayout(
       clusterRadius,
       Math.max(0, baseDistance + (random() - 0.5) * clusterRadius * 0.12)
     )
-    const angle = i * goldenAngle + (random() - 0.5) * 0.45
+    const angle = i * goldenAngle + (random() - 0.5) * angleJitter
 
     layout.push({
       position: {
@@ -68,7 +89,7 @@ export function buildForestLayout(
         z: Math.sin(angle) * jitteredDistance,
       },
       rotationY: random() * Math.PI * 2,
-      scale: 0.78 + random() * 0.38,
+      scale: scaleMin + random() * scaleRange,
       seed: Math.floor(random() * 2147483646) + 1,
     })
   }

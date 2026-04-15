@@ -62,29 +62,23 @@ export function buildTrunkGeometry(
   return mergeGeometries(geos, false)
 }
 
-function createCrossGeometry(size: number): THREE.BufferGeometry {
+export function createLeafGeometry(size: number): THREE.BufferGeometry {
   const plane1 = new THREE.PlaneGeometry(size, size)
   const plane2 = new THREE.PlaneGeometry(size, size)
   plane2.rotateY(Math.PI / 2)
   return mergeGeometries([plane1, plane2], false)
 }
 
-export function buildLeafMesh(
+export function buildLeafMatrices(
   leaves: Array<LeafPoint>,
-  material: THREE.Material,
-  config: SpeciesConfig,
   seed: number
-): THREE.InstancedMesh {
-  const crossGeo = createCrossGeometry(config.leafSize)
-  const count = leaves.length
-  const mesh = new THREE.InstancedMesh(crossGeo, material, count)
-
+): Array<THREE.Matrix4> {
+  const matrices: Array<THREE.Matrix4> = []
   const dummy = new THREE.Object3D()
   const up = new THREE.Vector3(0, 1, 0)
   const random = createSeededRandom(seed)
 
-  for (let i = 0; i < count; i++) {
-    const leaf = leaves[i]!
+  for (const leaf of leaves) {
     dummy.position.set(leaf.position.x, leaf.position.y, leaf.position.z)
 
     const dir = new THREE.Vector3(
@@ -102,11 +96,35 @@ export function buildLeafMesh(
 
     const s = 0.72 + random() * 0.48
     dummy.scale.setScalar(s)
-
     dummy.updateMatrix()
-    mesh.setMatrixAt(i, dummy.matrix)
+    matrices.push(dummy.matrix.clone())
+  }
+
+  return matrices
+}
+
+export function buildLeafMeshFromMatrices(
+  geometry: THREE.BufferGeometry,
+  matrices: Array<THREE.Matrix4>,
+  material: THREE.Material
+): THREE.InstancedMesh {
+  const mesh = new THREE.InstancedMesh(geometry, material, matrices.length)
+
+  for (let i = 0; i < matrices.length; i++) {
+    mesh.setMatrixAt(i, matrices[i]!)
   }
 
   mesh.instanceMatrix.needsUpdate = true
   return mesh
+}
+
+export function buildLeafMesh(
+  leaves: Array<LeafPoint>,
+  material: THREE.Material,
+  config: SpeciesConfig,
+  seed: number
+): THREE.InstancedMesh {
+  const geometry = createLeafGeometry(config.leafSize)
+  const matrices = buildLeafMatrices(leaves, seed)
+  return buildLeafMeshFromMatrices(geometry, matrices, material)
 }

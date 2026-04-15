@@ -1,11 +1,25 @@
-import { buildForestLayout, type ForestSettings } from '@/engine/forest'
+import {
+  buildForestLayout,
+  type ForestInstance,
+  type ForestSettings,
+} from '@/engine/forest'
 import * as THREE from 'three/webgpu'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { initKTX2Loader, loadBarkTextures, loadLeafTexture } from './textures'
 import { createBarkMaterial, createLeafMaterial } from './materials'
-import { buildTrunkGeometry, buildLeafMesh } from './tree-mesh'
+import {
+  buildLeafMatrices,
+  buildLeafMeshFromMatrices,
+  buildTrunkGeometry,
+  createLeafGeometry,
+} from './tree-mesh'
 import { generateLString, interpretLString } from '@/engine/lsystem'
 import type { SpeciesConfig } from '@/engine/species'
+import {
+  createLeafWindRuntime,
+  type LeafWindRuntime,
+  type WindSettings,
+} from './wind'
 
 export interface SceneContext {
   renderer: THREE.WebGPURenderer
@@ -15,6 +29,7 @@ export interface SceneContext {
   rebuildScene: (
     config: SpeciesConfig,
     forest: ForestSettings,
+    wind: WindSettings,
     variationSeed: number
   ) => Promise<void>
   dispose: () => void
@@ -62,10 +77,58 @@ async function getLeafTexture(species: string) {
   return leafCache.get(key)!
 }
 
+function createTreeMatrix(instance: ForestInstance): THREE.Matrix4 {
+  return new THREE.Matrix4().compose(
+    new THREE.Vector3(instance.position.x, instance.position.y, instance.position.z),
+    new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 1, 0),
+      instance.rotationY
+    ),
+    new THREE.Vector3(instance.scale, instance.scale, instance.scale)
+  )
+}
+
+function buildSharedForestGroup(
+  config: SpeciesConfig,
+  layout: Array<ForestInstance>,
+  barkMaterial: THREE.Material,
+  variationSeed: number
+): { group: THREE.Group; leafMatrices: Array<THREE.Matrix4> } {
+  const group = new THREE.Group()
+  const lstring = generateLString(config)
+  const baseTree = interpretLString(lstring, config, variationSeed)
+  const trunkGeometry = buildTrunkGeometry(baseTree.segments)
+  const trunkMesh = new THREE.InstancedMesh(
+    trunkGeometry,
+    barkMaterial,
+    layout.length
+  )
+  const treeMatrices = layout.map((item) => createTreeMatrix(item))
+
+  for (let i = 0; i < treeMatrices.length; i++) {
+    trunkMesh.setMatrixAt(i, treeMatrices[i]!)
+  }
+  trunkMesh.instanceMatrix.needsUpdate = true
+  trunkMesh.computeBoundingBox()
+  group.add(trunkMesh)
+
+  const baseLeafMatrices = buildLeafMatrices(baseTree.leaves, variationSeed)
+  const leafMatrices: Array<THREE.Matrix4> = []
+
+  for (const treeMatrix of treeMatrices) {
+    for (const baseLeafMatrix of baseLeafMatrices) {
+      leafMatrices.push(treeMatrix.clone().multiply(baseLeafMatrix))
+    }
+  }
+
+  return { group, leafMatrices }
+}
+
 export async function createScene(
   canvas: HTMLCanvasElement,
   initialConfig: SpeciesConfig,
   initialForest: ForestSettings,
+  initialWind: WindSettings,
   initialVariationSeed: number
 ): Promise<SceneContext> {
   // Renderer
@@ -92,7 +155,7 @@ export async function createScene(
   controls.dampingFactor = 0.06
   controls.target.set(0, 3, 0)
   controls.minDistance = 2
-  controls.maxDistance = 100
+  controls.maxDistance = 400
 
   // Lights: bright, natural
   const sun = new THREE.DirectionalLight(0xfff5e6, 4)
@@ -111,7 +174,7 @@ export async function createScene(
   scene.add(rim)
 
   // Ground: soft light surface
-  const groundGeo = new THREE.CircleGeometry(80, 96)
+  const groundGeo = new THREE.CircleGeometry(220, 128)
   groundGeo.rotateX(-Math.PI / 2)
   const groundMat = new THREE.MeshStandardNodeMaterial({
     color: 0xe8e2d8,
@@ -124,11 +187,13 @@ export async function createScene(
 
   // Tree group
   let treeGroup: THREE.Group | null = null
+  let leafWindRuntime: LeafWindRuntime | null = null
   let rebuildVersion = 0
 
   async function rebuildScene(
     config: SpeciesConfig,
     forest: ForestSettings,
+    wind: WindSettings,
     variationSeed: number
   ) {
     const version = ++rebuildVersion
@@ -139,60 +204,115 @@ export async function createScene(
       treeGroup = null
     }
 
+    if (leafWindRuntime) {
+      leafWindRuntime.dispose()
+      leafWindRuntime = null
+    }
+
     const group = new THREE.Group()
     const [barkTextures, leafTex] = await Promise.all([
       getBarkTextures(config.barkTexture),
       getLeafTexture(config.leafTexture),
     ])
     const barkMat = createBarkMaterial(barkTextures)
-    const leafMat = createLeafMaterial(leafTex)
-    const lstring = generateLString(config)
     const layout = buildForestLayout({
+      mode: forest.mode,
       count: forest.count,
       radius: forest.radius,
       seed: variationSeed,
     })
+    let leafMatrices: Array<THREE.Matrix4> = []
 
-    for (const item of layout) {
-      const { segments, leaves } = interpretLString(lstring, config, item.seed)
-      const tree = new THREE.Group()
-      tree.position.set(item.position.x, item.position.y, item.position.z)
-      tree.rotation.y = item.rotationY
-      tree.scale.setScalar(item.scale)
+    if (forest.mode === 'giant') {
+      const sharedForest = buildSharedForestGroup(
+        config,
+        layout,
+        barkMat,
+        variationSeed
+      )
+      group.add(sharedForest.group)
+      leafMatrices = sharedForest.leafMatrices
+    } else {
+      const lstring = generateLString(config)
 
-      const trunkGeo = buildTrunkGeometry(segments)
-      tree.add(new THREE.Mesh(trunkGeo, barkMat))
+      for (const item of layout) {
+        const { segments, leaves } = interpretLString(lstring, config, item.seed)
+        const tree = new THREE.Group()
+        tree.position.set(item.position.x, item.position.y, item.position.z)
+        tree.rotation.y = item.rotationY
+        tree.scale.setScalar(item.scale)
 
-      if (leaves.length > 0) {
-        tree.add(buildLeafMesh(leaves, leafMat, config, item.seed))
+        const trunkGeo = buildTrunkGeometry(segments)
+        tree.add(new THREE.Mesh(trunkGeo, barkMat))
+
+        group.add(tree)
+
+        if (leaves.length > 0) {
+          const treeMatrix = createTreeMatrix(item)
+          const baseLeafMatrices = buildLeafMatrices(leaves, item.seed)
+
+          for (const baseLeafMatrix of baseLeafMatrices) {
+            leafMatrices.push(treeMatrix.clone().multiply(baseLeafMatrix))
+          }
+        }
       }
-
-      group.add(tree)
     }
 
+    const nextLeafWindRuntime = createLeafWindRuntime(leafMatrices, wind)
+
+    if (nextLeafWindRuntime && leafMatrices.length > 0) {
+      const leafMat = createLeafMaterial(
+        leafTex,
+        nextLeafWindRuntime.renderOffsetBuffer
+      )
+      const leafGeo = createLeafGeometry(config.leafSize)
+      const leafMesh = buildLeafMeshFromMatrices(leafGeo, leafMatrices, leafMat)
+      leafMesh.frustumCulled = false
+      leafMesh.computeBoundingBox()
+      group.add(leafMesh)
+    }
+
+    group.updateMatrixWorld(true)
+    const box = new THREE.Box3().setFromObject(group)
+
     if (version !== rebuildVersion) {
+      nextLeafWindRuntime?.dispose()
       disposeGroupResources(group)
       return
     }
 
+    leafWindRuntime = nextLeafWindRuntime
     treeGroup = group
     scene.add(treeGroup)
 
     // Auto fit camera to tree bounds
-    const box = new THREE.Box3().setFromObject(group)
     const center = box.getCenter(new THREE.Vector3())
     const size = box.getSize(new THREE.Vector3())
     const maxDim = Math.max(size.x, size.y, size.z)
     const fov = camera.fov * (Math.PI / 180)
     const dist = maxDim / (2 * Math.tan(fov / 2)) * 1.4
 
-    controls.target.set(0, center.y, 0)
-    camera.position.set(0, center.y, dist)
+    if (forest.mode === 'giant') {
+      controls.target.set(center.x, center.y * 0.55, center.z)
+      camera.position.set(
+        center.x + dist * 0.32,
+        center.y + maxDim * 0.08,
+        center.z + dist * 0.9
+      )
+    } else {
+      controls.target.set(0, center.y, 0)
+      camera.position.set(0, center.y, dist)
+    }
     controls.update()
   }
 
   // Build initial tree
-  await rebuildScene(initialConfig, initialForest, initialVariationSeed)
+  await rebuildScene(
+    initialConfig,
+    initialForest,
+    initialWind,
+    initialVariationSeed
+  )
 
   // Resize handler: use setViewOffset to center tree in visible area
   const PANEL_WIDTH = 420
@@ -226,6 +346,9 @@ export async function createScene(
 
   // Animation loop
   renderer.setAnimationLoop(() => {
+    if (leafWindRuntime) {
+      renderer.compute(leafWindRuntime.computeNode)
+    }
     controls.update()
     renderer.render(scene, camera)
   })
@@ -233,6 +356,15 @@ export async function createScene(
   function dispose() {
     resizeObserver.disconnect()
     renderer.setAnimationLoop(null)
+    if (leafWindRuntime) {
+      leafWindRuntime.dispose()
+      leafWindRuntime = null
+    }
+    if (treeGroup) {
+      scene.remove(treeGroup)
+      disposeGroupResources(treeGroup)
+      treeGroup = null
+    }
     renderer.dispose()
   }
 

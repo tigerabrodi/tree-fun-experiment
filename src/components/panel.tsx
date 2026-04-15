@@ -1,11 +1,18 @@
-import type { ForestSettings } from '@/engine/forest'
+import {
+  GIANT_FOREST_SETTINGS,
+  SINGLE_TREE_FOREST,
+  type ForestSettings,
+} from '@/engine/forest'
 import { ALL_SPECIES, type SpeciesConfig } from '@/engine/species'
+import { type WindSettings } from '@/three/wind'
 
 interface PanelProps {
   config: SpeciesConfig
   forest: ForestSettings
+  wind: WindSettings
   onChange: (config: SpeciesConfig) => void
   onForestChange: (forest: ForestSettings) => void
+  onWindChange: (wind: WindSettings) => void
   onRegenerate: () => void
 }
 
@@ -50,8 +57,10 @@ function Slider({
 export function Panel({
   config,
   forest,
+  wind,
   onChange,
   onForestChange,
+  onWindChange,
   onRegenerate,
 }: PanelProps) {
   function update(partial: Partial<SpeciesConfig>) {
@@ -60,6 +69,14 @@ export function Panel({
 
   function updateForest(partial: Partial<ForestSettings>) {
     onForestChange({ ...forest, ...partial })
+  }
+
+  function applyForestPreset(nextForest: ForestSettings) {
+    onForestChange(nextForest)
+  }
+
+  function updateWind(partial: Partial<WindSettings>) {
+    onWindChange({ ...wind, ...partial })
   }
 
   return (
@@ -171,11 +188,25 @@ export function Panel({
         <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
           Forest
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => applyForestPreset(SINGLE_TREE_FOREST)}
+            className={`tree-button-secondary ${forest.mode === 'custom' && forest.count === 1 ? 'is-active' : ''}`}
+          >
+            Single Tree
+          </button>
+          <button
+            onClick={() => applyForestPreset(GIANT_FOREST_SETTINGS)}
+            className={`tree-button-secondary ${forest.mode === 'giant' ? 'is-active' : ''}`}
+          >
+            Giant Forest
+          </button>
+        </div>
         <Slider
           label="Tree Count"
           value={forest.count}
           min={1}
-          max={25}
+          max={forest.mode === 'giant' ? 180 : 40}
           step={1}
           onChange={(v) => updateForest({ count: v })}
         />
@@ -183,9 +214,39 @@ export function Panel({
           label="Forest Radius"
           value={forest.radius}
           min={8}
-          max={42}
+          max={forest.mode === 'giant' ? 120 : 50}
           step={1}
           onChange={(v) => updateForest({ radius: v })}
+        />
+      </div>
+
+      <div className="flex flex-col gap-5">
+        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
+          Wind
+        </div>
+        <Slider
+          label="Wind Strength"
+          value={wind.strength}
+          min={0}
+          max={1.2}
+          step={0.01}
+          onChange={(v) => updateWind({ strength: v })}
+        />
+        <Slider
+          label="Wind Speed"
+          value={wind.speed}
+          min={0}
+          max={4}
+          step={0.05}
+          onChange={(v) => updateWind({ speed: v })}
+        />
+        <Slider
+          label="Wind Direction"
+          value={wind.direction}
+          min={0}
+          max={360}
+          step={1}
+          onChange={(v) => updateWind({ direction: v })}
         />
       </div>
 

@@ -4,3 +4,4 @@ dist
 .vite
 *.tsbuildinfo
 .tmp*
+.playwright-cli*
