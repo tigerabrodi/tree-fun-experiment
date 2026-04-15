@@ -214,7 +214,7 @@ export async function createScene(
       getBarkTextures(config.barkTexture),
       getLeafTexture(config.leafTexture),
     ])
-    const barkMat = createBarkMaterial(barkTextures)
+    const barkMat = createBarkMaterial(barkTextures, wind)
     const layout = buildForestLayout({
       mode: forest.mode,
       count: forest.count,

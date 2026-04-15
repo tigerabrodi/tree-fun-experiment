@@ -5,6 +5,27 @@ import type { SpeciesConfig } from '@/engine/species'
 
 const TUBE_RADIAL_SEGMENTS = 8
 
+export interface TrunkWindProfile {
+  baseWeight: number
+  tipWeight: number
+  phase: number
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
+
+function hashSegmentPhase(segment: TreeSegment): number {
+  const midX = (segment.start.x + segment.end.x) * 0.5
+  const midY = (segment.start.y + segment.end.y) * 0.5
+  const midZ = (segment.start.z + segment.end.z) * 0.5
+  const hashed = Math.sin(
+    midX * 12.9898 + midY * 78.233 + midZ * 45.164 + segment.depth * 19.19
+  ) * 43758.5453
+
+  return hashed - Math.floor(hashed)
+}
+
 function createSeededRandom(seed: number) {
   let rng = Math.abs(Math.floor(seed)) % 2147483647
   if (rng === 0) rng = 1
@@ -15,7 +36,60 @@ function createSeededRandom(seed: number) {
   }
 }
 
-function buildTubeSegment(seg: TreeSegment): THREE.BufferGeometry | null {
+export function buildTrunkWindProfiles(
+  segments: Array<TreeSegment>
+): Array<TrunkWindProfile> {
+  if (segments.length === 0) {
+    return []
+  }
+
+  let minY = Number.POSITIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  let maxRadius = 0
+  let maxDepth = 0
+
+  for (const segment of segments) {
+    minY = Math.min(minY, segment.start.y, segment.end.y)
+    maxY = Math.max(maxY, segment.start.y, segment.end.y)
+    maxRadius = Math.max(maxRadius, segment.startRadius, segment.endRadius)
+    maxDepth = Math.max(maxDepth, segment.depth)
+  }
+
+  const heightRange = Math.max(0.001, maxY - minY)
+  const safeMaxRadius = Math.max(0.001, maxRadius)
+  const safeMaxDepth = Math.max(1, maxDepth)
+
+  return segments.map((segment) => {
+    const startHeight = clamp01((segment.start.y - minY) / heightRange)
+    const endHeight = clamp01((segment.end.y - minY) / heightRange)
+    const thickness =
+      Math.max(segment.startRadius, segment.endRadius) / safeMaxRadius
+    const flexibility = Math.pow(1 - clamp01(thickness), 1.15)
+    const depthFactor = segment.depth / safeMaxDepth
+    const baseWeight = clamp01(
+      Math.pow(startHeight, 1.35) * 0.55 +
+        flexibility * 0.24 +
+        depthFactor * 0.18 -
+        0.05
+    )
+    const tipWeight = clamp01(
+      Math.pow(endHeight, 1.1) * 0.72 +
+        flexibility * 0.38 +
+        depthFactor * 0.24
+    )
+
+    return {
+      baseWeight,
+      tipWeight: Math.max(baseWeight, tipWeight),
+      phase: hashSegmentPhase(segment),
+    }
+  })
+}
+
+function buildTubeSegment(
+  seg: TreeSegment,
+  windProfile: TrunkWindProfile
+): THREE.BufferGeometry | null {
   const dx = seg.end.x - seg.start.x
   const dy = seg.end.y - seg.start.y
   const dz = seg.end.z - seg.start.z
@@ -41,6 +115,21 @@ function buildTubeSegment(seg: TreeSegment): THREE.BufferGeometry | null {
     uvAttr.setY(i, uvAttr.getY(i) * length * 2)
   }
 
+  const posAttr = geo.attributes.position
+  const windWeights = new Float32Array(posAttr.count)
+  const windPhases = new Float32Array(posAttr.count)
+  for (let i = 0; i < posAttr.count; i++) {
+    const tipFactor = clamp01(posAttr.getY(i) / length + 0.5)
+    windWeights[i] = THREE.MathUtils.lerp(
+      windProfile.baseWeight,
+      windProfile.tipWeight,
+      tipFactor
+    )
+    windPhases[i] = windProfile.phase
+  }
+  geo.setAttribute('windWeight', new THREE.Float32BufferAttribute(windWeights, 1))
+  geo.setAttribute('windPhase', new THREE.Float32BufferAttribute(windPhases, 1))
+
   const midX = (seg.start.x + seg.end.x) / 2
   const midY = (seg.start.y + seg.end.y) / 2
   const midZ = (seg.start.z + seg.end.z) / 2
@@ -53,9 +142,10 @@ function buildTubeSegment(seg: TreeSegment): THREE.BufferGeometry | null {
 export function buildTrunkGeometry(
   segments: Array<TreeSegment>
 ): THREE.BufferGeometry {
+  const windProfiles = buildTrunkWindProfiles(segments)
   const geos: Array<THREE.BufferGeometry> = []
-  for (const seg of segments) {
-    const geo = buildTubeSegment(seg)
+  for (let i = 0; i < segments.length; i++) {
+    const geo = buildTubeSegment(segments[i]!, windProfiles[i]!)
     if (geo) geos.push(geo)
   }
   if (geos.length === 0) return new THREE.BufferGeometry()
