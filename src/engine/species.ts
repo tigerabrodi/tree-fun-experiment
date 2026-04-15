@@ -14,6 +14,7 @@ export interface SpeciesConfig {
   lengthScale: number
   lengthDecay: number
   initialRadius: number
+  segmentTaper: number
   radiusDecay: number
   leafSize: number
   barkTexture: string
@@ -22,21 +23,26 @@ export interface SpeciesConfig {
 
 export const OAK: SpeciesConfig = {
   name: 'oak',
-  axiom: 'FA',
+  axiom: 'T',
   rules: [
-    { predecessor: 'A', successor: '[&FL!A]////[&FL!A]////[&FL!A]' },
-    { predecessor: 'F', successor: 'S//F' },
-    { predecessor: 'S', successor: 'F' },
-    { predecessor: 'L', successor: '[^^-F+F+F-|-F+F+F]' },
+    {
+      predecessor: 'T',
+      successor: 'FF[+!B][-!B][//+!B][//-!B]T',
+    },
+    {
+      predecessor: 'B',
+      successor: 'F[+!B][-!B]F',
+    },
   ],
-  iterations: 4,
-  angle: 28,
-  angleVariance: 8,
-  lengthScale: 1.2,
-  lengthDecay: 0.82,
-  initialRadius: 0.15,
-  radiusDecay: 0.72,
-  leafSize: 1.4,
+  iterations: 5,
+  angle: 30,
+  angleVariance: 10,
+  lengthScale: 1.0,
+  lengthDecay: 0.9,
+  initialRadius: 0.16,
+  segmentTaper: 0.987,
+  radiusDecay: 0.7,
+  leafSize: 0.8,
   barkTexture: 'oak',
   leafTexture: 'oak',
 }
@@ -58,6 +64,7 @@ export const PINE: SpeciesConfig = {
   lengthScale: 0.55,
   lengthDecay: 0.9,
   initialRadius: 0.18,
+  segmentTaper: 0.985,
   radiusDecay: 0.82,
   leafSize: 1.0,
   barkTexture: 'pine',
@@ -66,21 +73,26 @@ export const PINE: SpeciesConfig = {
 
 export const BIRCH: SpeciesConfig = {
   name: 'birch',
-  axiom: 'FA',
+  axiom: 'T',
   rules: [
-    { predecessor: 'A', successor: '[&FL!A]/////[&FL!A]///////[&FL!A]' },
-    { predecessor: 'F', successor: 'S/F' },
-    { predecessor: 'S', successor: 'F' },
-    { predecessor: 'L', successor: '[^^F-F+F]' },
+    {
+      predecessor: 'T',
+      successor: 'FF[+!B][-!B]T',
+    },
+    {
+      predecessor: 'B',
+      successor: 'F[+!B][-!B]F',
+    },
   ],
-  iterations: 4,
-  angle: 24,
-  angleVariance: 10,
-  lengthScale: 1.1,
-  lengthDecay: 0.85,
+  iterations: 5,
+  angle: 18,
+  angleVariance: 8,
+  lengthScale: 0.95,
+  lengthDecay: 0.9,
   initialRadius: 0.08,
+  segmentTaper: 0.989,
   radiusDecay: 0.68,
-  leafSize: 0.9,
+  leafSize: 0.65,
   barkTexture: 'birch',
   leafTexture: 'birch',
 }
@@ -89,21 +101,26 @@ export const BIRCH: SpeciesConfig = {
 // Similar branching to oak but with wider angles.
 export const MAPLE: SpeciesConfig = {
   name: 'maple',
-  axiom: 'FA',
+  axiom: 'T',
   rules: [
-    { predecessor: 'A', successor: '[&FL!A]///[&FL!A]///[&FL!A]' },
-    { predecessor: 'F', successor: 'S/F' },
-    { predecessor: 'S', successor: 'F' },
-    { predecessor: 'L', successor: '[^^-F+F-|-F+F]' },
+    {
+      predecessor: 'T',
+      successor: 'FF[+!B][-!B][//+!B][//-!B]T',
+    },
+    {
+      predecessor: 'B',
+      successor: 'F[+!B][-!B]F',
+    },
   ],
-  iterations: 4,
-  angle: 32,
+  iterations: 5,
+  angle: 34,
   angleVariance: 10,
-  lengthScale: 1.1,
-  lengthDecay: 0.84,
+  lengthScale: 0.95,
+  lengthDecay: 0.9,
   initialRadius: 0.14,
+  segmentTaper: 0.987,
   radiusDecay: 0.7,
-  leafSize: 1.3,
+  leafSize: 0.85,
   barkTexture: 'maple',
   leafTexture: 'maple',
 }
@@ -112,21 +129,26 @@ export const MAPLE: SpeciesConfig = {
 // Lower branching angle, more horizontal spread.
 export const SAKURA: SpeciesConfig = {
   name: 'sakura',
-  axiom: 'FFA',
+  axiom: 'T',
   rules: [
-    { predecessor: 'A', successor: '[&&FL!A]////[&&FL!A]////[&&FL!A]' },
-    { predecessor: 'F', successor: 'S//F' },
-    { predecessor: 'S', successor: 'F' },
-    { predecessor: 'L', successor: '[^^-F+F+F]' },
+    {
+      predecessor: 'T',
+      successor: 'F[+!B][-!B][//+!B][//-!B]FT',
+    },
+    {
+      predecessor: 'B',
+      successor: 'F[+!B][-!B]&F',
+    },
   ],
-  iterations: 4,
-  angle: 35,
+  iterations: 5,
+  angle: 32,
   angleVariance: 12,
-  lengthScale: 0.9,
-  lengthDecay: 0.83,
+  lengthScale: 0.85,
+  lengthDecay: 0.9,
   initialRadius: 0.12,
+  segmentTaper: 0.985,
   radiusDecay: 0.7,
-  leafSize: 1.1,
+  leafSize: 0.8,
   barkTexture: 'sakura',
   leafTexture: 'sakura',
 }

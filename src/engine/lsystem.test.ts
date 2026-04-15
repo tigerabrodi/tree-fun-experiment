@@ -4,7 +4,7 @@ import {
   generateLString,
   interpretLString,
 } from './lsystem'
-import { OAK, PINE, BIRCH } from './species'
+import { OAK, PINE, BIRCH, MAPLE, SAKURA } from './species'
 import type { LSystemRule } from './species'
 
 describe('applyRules', () => {
@@ -104,6 +104,32 @@ describe('interpretLString', () => {
     expect(segments[0]!.end.z).toBeCloseTo(segments[1]!.start.z, 5)
   })
 
+  it('turns around on pipe commands', () => {
+    const config = {
+      ...OAK,
+      angleVariance: 0,
+      lengthScale: 1.0,
+      lengthDecay: 1.0,
+    }
+    const { segments } = interpretLString('F|F', config, 42)
+    expect(segments).toHaveLength(2)
+    expect(segments[1]!.start.y).toBeCloseTo(1, 5)
+    expect(segments[1]!.end.y).toBeCloseTo(0, 5)
+  })
+
+  it('tapers radius across consecutive forward segments', () => {
+    const config = {
+      ...OAK,
+      angleVariance: 0,
+      lengthDecay: 1.0,
+      segmentTaper: 0.9,
+    }
+    const { segments } = interpretLString('FF', config, 42)
+    expect(segments).toHaveLength(2)
+    expect(segments[0]!.endRadius).toBeCloseTo(segments[1]!.startRadius, 5)
+    expect(segments[1]!.startRadius).toBeLessThan(segments[0]!.startRadius)
+  })
+
   it('branching [ ] restores position', () => {
     const config = {
       ...OAK,
@@ -147,11 +173,38 @@ describe('interpretLString', () => {
   })
 
   it('handles full species presets without crashing', () => {
-    for (const species of [OAK, PINE, BIRCH]) {
+    for (const species of [OAK, PINE, BIRCH, MAPLE, SAKURA]) {
       const lstring = generateLString(species)
       const { segments, leaves } = interpretLString(lstring, species, 42)
       expect(segments.length).toBeGreaterThan(0)
       expect(leaves.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('broadleaf presets generate visible side branches', () => {
+    for (const species of [OAK, BIRCH, MAPLE, SAKURA]) {
+      const lstring = generateLString(species)
+      const { segments } = interpretLString(lstring, species, 42)
+
+      let maxRadius = 0
+      let branchCount = 0
+
+      for (const seg of segments) {
+        for (const point of [seg.start, seg.end]) {
+          maxRadius = Math.max(maxRadius, Math.hypot(point.x, point.z))
+        }
+
+        const horizontalTravel = Math.hypot(
+          seg.end.x - seg.start.x,
+          seg.end.z - seg.start.z
+        )
+        if (horizontalTravel > 0.2) {
+          branchCount++
+        }
+      }
+
+      expect(maxRadius).toBeGreaterThan(1.5)
+      expect(branchCount).toBeGreaterThan(30)
     }
   })
 })

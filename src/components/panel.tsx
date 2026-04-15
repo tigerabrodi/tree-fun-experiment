@@ -1,8 +1,11 @@
+import type { ForestSettings } from '@/engine/forest'
 import { ALL_SPECIES, type SpeciesConfig } from '@/engine/species'
 
 interface PanelProps {
   config: SpeciesConfig
+  forest: ForestSettings
   onChange: (config: SpeciesConfig) => void
+  onForestChange: (forest: ForestSettings) => void
   onRegenerate: () => void
 }
 
@@ -44,13 +47,23 @@ function Slider({
   )
 }
 
-export function Panel({ config, onChange, onRegenerate }: PanelProps) {
+export function Panel({
+  config,
+  forest,
+  onChange,
+  onForestChange,
+  onRegenerate,
+}: PanelProps) {
   function update(partial: Partial<SpeciesConfig>) {
     onChange({ ...config, ...partial })
   }
 
+  function updateForest(partial: Partial<ForestSettings>) {
+    onForestChange({ ...forest, ...partial })
+  }
+
   return (
-    <aside className="flex h-dvh w-[380px] min-w-[380px] flex-col gap-8 overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-surface)] px-10 py-10">
+    <aside className="flex h-dvh w-[420px] min-w-[420px] flex-col gap-8 overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-surface)] px-12 py-10">
       <h1 className="font-display text-[26px] font-normal tracking-tight text-[var(--color-text)]">
         L-System Trees
       </h1>
@@ -129,6 +142,14 @@ export function Panel({ config, onChange, onRegenerate }: PanelProps) {
           step={0.01}
           onChange={(v) => update({ radiusDecay: v })}
         />
+        <Slider
+          label="Trunk Taper"
+          value={config.segmentTaper}
+          min={0.9}
+          max={0.995}
+          step={0.005}
+          onChange={(v) => update({ segmentTaper: v })}
+        />
       </div>
 
       {/* Foliage */}
@@ -143,6 +164,28 @@ export function Panel({ config, onChange, onRegenerate }: PanelProps) {
           max={3.0}
           step={0.1}
           onChange={(v) => update({ leafSize: v })}
+        />
+      </div>
+
+      <div className="flex flex-col gap-5">
+        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
+          Forest
+        </div>
+        <Slider
+          label="Tree Count"
+          value={forest.count}
+          min={1}
+          max={25}
+          step={1}
+          onChange={(v) => updateForest({ count: v })}
+        />
+        <Slider
+          label="Forest Radius"
+          value={forest.radius}
+          min={8}
+          max={42}
+          step={1}
+          onChange={(v) => updateForest({ radius: v })}
         />
       </div>
 

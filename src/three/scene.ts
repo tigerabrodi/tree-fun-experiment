@@ -1,3 +1,4 @@
+import { buildForestLayout, type ForestSettings } from '@/engine/forest'
 import * as THREE from 'three/webgpu'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { initKTX2Loader, loadBarkTextures, loadLeafTexture } from './textures'
@@ -11,7 +12,11 @@ export interface SceneContext {
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   controls: OrbitControls
-  rebuildTree: (config: SpeciesConfig) => Promise<void>
+  rebuildScene: (
+    config: SpeciesConfig,
+    forest: ForestSettings,
+    variationSeed: number
+  ) => Promise<void>
   dispose: () => void
 }
 
@@ -20,6 +25,27 @@ const barkCache = new Map<
   Awaited<ReturnType<typeof loadBarkTextures>>
 >()
 const leafCache = new Map<string, THREE.Texture>()
+
+function disposeGroupResources(group: THREE.Group) {
+  const materials = new Set<THREE.Material>()
+
+  group.traverse((obj) => {
+    if (obj instanceof THREE.Mesh || obj instanceof THREE.InstancedMesh) {
+      obj.geometry.dispose()
+      if (Array.isArray(obj.material)) {
+        for (const material of obj.material) {
+          materials.add(material)
+        }
+      } else {
+        materials.add(obj.material)
+      }
+    }
+  })
+
+  for (const material of materials) {
+    material.dispose()
+  }
+}
 
 async function getBarkTextures(species: string) {
   if (!barkCache.has(species)) {
@@ -38,7 +64,9 @@ async function getLeafTexture(species: string) {
 
 export async function createScene(
   canvas: HTMLCanvasElement,
-  initialConfig: SpeciesConfig
+  initialConfig: SpeciesConfig,
+  initialForest: ForestSettings,
+  initialVariationSeed: number
 ): Promise<SceneContext> {
   // Renderer
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true })
@@ -83,7 +111,7 @@ export async function createScene(
   scene.add(rim)
 
   // Ground: soft light surface
-  const groundGeo = new THREE.CircleGeometry(30, 64)
+  const groundGeo = new THREE.CircleGeometry(80, 96)
   groundGeo.rotateX(-Math.PI / 2)
   const groundMat = new THREE.MeshStandardNodeMaterial({
     color: 0xe8e2d8,
@@ -96,33 +124,55 @@ export async function createScene(
 
   // Tree group
   let treeGroup: THREE.Group | null = null
+  let rebuildVersion = 0
 
-  async function rebuildTree(config: SpeciesConfig) {
+  async function rebuildScene(
+    config: SpeciesConfig,
+    forest: ForestSettings,
+    variationSeed: number
+  ) {
+    const version = ++rebuildVersion
+
     if (treeGroup) {
       scene.remove(treeGroup)
-      treeGroup.traverse((obj) => {
-        if (obj instanceof THREE.Mesh || obj instanceof THREE.InstancedMesh) {
-          obj.geometry.dispose()
-        }
-      })
+      disposeGroupResources(treeGroup)
+      treeGroup = null
     }
 
     const group = new THREE.Group()
-    const lstring = generateLString(config)
-    const { segments, leaves } = interpretLString(lstring, config)
-
     const [barkTextures, leafTex] = await Promise.all([
       getBarkTextures(config.barkTexture),
       getLeafTexture(config.leafTexture),
     ])
-
-    const trunkGeo = buildTrunkGeometry(segments)
     const barkMat = createBarkMaterial(barkTextures)
-    group.add(new THREE.Mesh(trunkGeo, barkMat))
+    const leafMat = createLeafMaterial(leafTex)
+    const lstring = generateLString(config)
+    const layout = buildForestLayout({
+      count: forest.count,
+      radius: forest.radius,
+      seed: variationSeed,
+    })
 
-    if (leaves.length > 0) {
-      const leafMat = createLeafMaterial(leafTex)
-      group.add(buildLeafMesh(leaves, leafMat, config))
+    for (const item of layout) {
+      const { segments, leaves } = interpretLString(lstring, config, item.seed)
+      const tree = new THREE.Group()
+      tree.position.set(item.position.x, item.position.y, item.position.z)
+      tree.rotation.y = item.rotationY
+      tree.scale.setScalar(item.scale)
+
+      const trunkGeo = buildTrunkGeometry(segments)
+      tree.add(new THREE.Mesh(trunkGeo, barkMat))
+
+      if (leaves.length > 0) {
+        tree.add(buildLeafMesh(leaves, leafMat, config, item.seed))
+      }
+
+      group.add(tree)
+    }
+
+    if (version !== rebuildVersion) {
+      disposeGroupResources(group)
+      return
     }
 
     treeGroup = group
@@ -142,10 +192,10 @@ export async function createScene(
   }
 
   // Build initial tree
-  await rebuildTree(initialConfig)
+  await rebuildScene(initialConfig, initialForest, initialVariationSeed)
 
   // Resize handler: use setViewOffset to center tree in visible area
-  const PANEL_WIDTH = 380
+  const PANEL_WIDTH = 420
 
   function resize() {
     const rect = canvas.getBoundingClientRect()
@@ -186,5 +236,5 @@ export async function createScene(
     renderer.dispose()
   }
 
-  return { renderer, scene, camera, controls, rebuildTree, dispose }
+  return { renderer, scene, camera, controls, rebuildScene, dispose }
 }

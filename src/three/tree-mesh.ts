@@ -5,6 +5,16 @@ import type { SpeciesConfig } from '@/engine/species'
 
 const TUBE_RADIAL_SEGMENTS = 8
 
+function createSeededRandom(seed: number) {
+  let rng = Math.abs(Math.floor(seed)) % 2147483647
+  if (rng === 0) rng = 1
+
+  return function random(): number {
+    rng = (rng * 16807) % 2147483647
+    return rng / 2147483647
+  }
+}
+
 function buildTubeSegment(seg: TreeSegment): THREE.BufferGeometry | null {
   const dx = seg.end.x - seg.start.x
   const dy = seg.end.y - seg.start.y
@@ -62,7 +72,8 @@ function createCrossGeometry(size: number): THREE.BufferGeometry {
 export function buildLeafMesh(
   leaves: Array<LeafPoint>,
   material: THREE.Material,
-  config: SpeciesConfig
+  config: SpeciesConfig,
+  seed: number
 ): THREE.InstancedMesh {
   const crossGeo = createCrossGeometry(config.leafSize)
   const count = leaves.length
@@ -70,6 +81,7 @@ export function buildLeafMesh(
 
   const dummy = new THREE.Object3D()
   const up = new THREE.Vector3(0, 1, 0)
+  const random = createSeededRandom(seed)
 
   for (let i = 0; i < count; i++) {
     const leaf = leaves[i]!
@@ -83,12 +95,12 @@ export function buildLeafMesh(
     const quat = new THREE.Quaternion().setFromUnitVectors(up, dir)
     const twist = new THREE.Quaternion().setFromAxisAngle(
       dir,
-      Math.random() * Math.PI
+      random() * Math.PI
     )
     quat.multiply(twist)
     dummy.quaternion.copy(quat)
 
-    const s = 0.7 + Math.random() * 0.6
+    const s = 0.72 + random() * 0.48
     dummy.scale.setScalar(s)
 
     dummy.updateMatrix()

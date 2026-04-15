@@ -139,15 +139,17 @@ export function interpretLString(
       case 'S': {
         const start = cloneVec3(state.position)
         const end = addScaled(state.position, state.heading, state.length)
+        const nextRadius = state.radius * config.segmentTaper
         segments.push({
           start,
           end,
           startRadius: state.radius,
-          endRadius: state.radius * config.radiusDecay,
+          endRadius: nextRadius,
           depth: state.depth,
         })
         state.position = end
         state.length *= config.lengthDecay
+        state.radius = nextRadius
         break
       }
       case '+': {
@@ -184,6 +186,11 @@ export function interpretLString(
         const a = jitterAngle()
         state.left = rotateAroundAxis(state.left, state.heading, -a)
         state.up = rotateAroundAxis(state.up, state.heading, -a)
+        break
+      }
+      case '|': {
+        state.heading = rotateAroundAxis(state.heading, state.up, Math.PI)
+        state.left = rotateAroundAxis(state.left, state.up, Math.PI)
         break
       }
       case '!': {
