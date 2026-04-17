@@ -41,6 +41,8 @@ export interface ScenePerformanceStats extends StaticScenePerformanceStats {
   geometries: number
   textures: number
   fps: number
+  visibleChunkCount: number
+  culledChunkCount: number
 }
 
 export interface SceneDebugSnapshot {
@@ -75,6 +77,8 @@ interface LiveRenderPerformanceStats {
   geometries: number
   textures: number
   fps: number
+  visibleChunkCount: number
+  culledChunkCount: number
 }
 
 function roundRebuildMs(rebuildMs: number): number {

@@ -20,6 +20,7 @@ import {
   buildTrunkGeometry,
   createLeafGeometry,
 } from './tree-mesh'
+import { createChunkDebugOverlay, type ChunkDebugBounds } from './debug-overlay'
 import { generateLString } from '@/engine/lsystem'
 import { type SpeciesConfig } from '@/engine/species'
 import {
@@ -27,6 +28,7 @@ import {
   type LeafWindRuntime,
   type WindSettings,
 } from './wind'
+import { applyChunkFrustumCulling } from './culling'
 import {
   type ChunkPerformanceSummary,
   type SceneDebugSnapshot,
@@ -69,9 +71,12 @@ interface SceneFrame {
   forestMode: ForestSettings['mode']
 }
 
-interface ChunkDebugBounds {
+interface ChunkRenderState {
   id: string
-  box: THREE.Box3
+  group: THREE.Group
+  bounds: THREE.Box3
+  leafWindRuntime: LeafWindRuntime | null
+  visible: boolean
 }
 
 function disposeGroupResources(group: THREE.Group) {
@@ -111,64 +116,6 @@ function setMaterialWireframe(material: THREE.Material, enabled: boolean) {
     materialWithWireframe.wireframe = enabled
     material.needsUpdate = true
   }
-}
-
-function createChunkDebugOverlay(
-  chunkBounds: Array<ChunkDebugBounds>
-): THREE.Group {
-  const overlay = new THREE.Group()
-  const palette = [
-    '#ff3b30',
-    '#ff9500',
-    '#ffd60a',
-    '#34c759',
-    '#00c7be',
-    '#32ade6',
-    '#0a84ff',
-    '#5e5ce6',
-    '#bf5af2',
-    '#ff2d55',
-  ]
-
-  for (let index = 0; index < chunkBounds.length; index += 1) {
-    const chunk = chunkBounds[index]
-    const color = new THREE.Color(palette[index % palette.length])
-    const size = chunk.box.getSize(new THREE.Vector3())
-    const center = chunk.box.getCenter(new THREE.Vector3())
-    const fill = new THREE.Mesh(
-      new THREE.BoxGeometry(
-        Math.max(size.x - 0.2, size.x * 0.96),
-        Math.max(size.y - 0.2, size.y * 0.96),
-        Math.max(size.z - 0.2, size.z * 0.96)
-      ),
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.07,
-        depthTest: false,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        toneMapped: false,
-      })
-    )
-    fill.position.copy(center)
-    fill.renderOrder = 40
-    overlay.add(fill)
-
-    const helper = new THREE.Box3Helper(chunk.box.clone(), color)
-    const material = helper.material as THREE.LineBasicMaterial
-
-    material.depthTest = false
-    material.depthWrite = false
-    material.transparent = true
-    material.opacity = 1
-    material.toneMapped = false
-    helper.renderOrder = 50
-    helper.userData.chunkId = chunk.id
-    overlay.add(helper)
-  }
-
-  return overlay
 }
 
 function finalizeInstancedBounds(mesh: THREE.InstancedMesh, expandBy = 0) {
@@ -436,9 +383,14 @@ export async function createScene(
   let treeGroup: THREE.Group | null = null
   let debugOverlayGroup: THREE.Group | null = null
   let leafWindRuntimes: Array<LeafWindRuntime> = []
+  let chunkRenderStates: Array<ChunkRenderState> = []
   let rebuildVersion = 0
   let currentFrame: SceneFrame | null = null
   let staticPerformanceStats: StaticScenePerformanceStats | null = null
+  let currentChunkCulling = {
+    visibleChunkCount: 0,
+    culledChunkCount: 0,
+  }
   let currentDebugView = normalizeDebugViewSettings(initialDebugView)
   let currentDebugSnapshot: SceneDebugSnapshot = {
     performance: null,
@@ -447,6 +399,25 @@ export async function createScene(
   }
   let frameCountSinceReport = 0
   let lastPerformanceReportTime = performance.now()
+
+  function updateChunkCulling() {
+    if (chunkRenderStates.length === 0) {
+      currentChunkCulling = {
+        visibleChunkCount: 0,
+        culledChunkCount: 0,
+      }
+      return currentChunkCulling
+    }
+
+    const summary = applyChunkFrustumCulling(camera, chunkRenderStates)
+
+    for (const chunk of chunkRenderStates) {
+      chunk.group.visible = chunk.visible
+    }
+
+    currentChunkCulling = summary
+    return summary
+  }
 
   function applyDebugView(nextDebugView: DebugViewSettings) {
     currentDebugView = normalizeDebugViewSettings(nextDebugView)
@@ -523,6 +494,8 @@ export async function createScene(
       geometries: renderer.info.memory.geometries,
       textures: renderer.info.memory.textures,
       fps: Number(fps.toFixed(1)),
+      visibleChunkCount: currentChunkCulling.visibleChunkCount,
+      culledChunkCount: currentChunkCulling.culledChunkCount,
     })
 
     currentDebugSnapshot = {
@@ -563,9 +536,15 @@ export async function createScene(
       runtime.dispose()
     }
     leafWindRuntimes = []
+    chunkRenderStates = []
+    currentChunkCulling = {
+      visibleChunkCount: 0,
+      culledChunkCount: 0,
+    }
 
     const group = new THREE.Group()
     const nextLeafWindRuntimes: Array<LeafWindRuntime> = []
+    const nextChunkRenderStates: Array<ChunkRenderState> = []
     const [barkTextures, leafTex] = await Promise.all([
       getBarkTextures(config.barkTexture),
       getLeafTexture(config.leafTexture, config.leafTextureType),
@@ -627,9 +606,17 @@ export async function createScene(
         }
 
         chunkGroup.updateMatrixWorld(true)
+        const chunkBounds = new THREE.Box3().setFromObject(chunkGroup)
         nextChunkBounds.push({
           id: chunk.id,
-          box: new THREE.Box3().setFromObject(chunkGroup),
+          box: chunkBounds.clone(),
+        })
+        nextChunkRenderStates.push({
+          id: chunk.id,
+          group: chunkGroup,
+          bounds: chunkBounds,
+          leafWindRuntime: chunkLeafRuntime ?? null,
+          visible: true,
         })
 
         allVariants.push(...variants)
@@ -716,9 +703,17 @@ export async function createScene(
 
       const rebuildMs = performance.now() - rebuildStart
       group.updateMatrixWorld(true)
+      const chunkBounds = new THREE.Box3().setFromObject(group)
       nextChunkBounds.push({
         id: '0:0',
-        box: new THREE.Box3().setFromObject(group),
+        box: chunkBounds.clone(),
+      })
+      nextChunkRenderStates.push({
+        id: '0:0',
+        group,
+        bounds: chunkBounds,
+        leafWindRuntime: nextLeafWindRuntime ?? null,
+        visible: true,
       })
       nextDebugChunks = [
         {
@@ -767,6 +762,7 @@ export async function createScene(
     }
 
     leafWindRuntimes = nextLeafWindRuntimes
+    chunkRenderStates = nextChunkRenderStates
     treeGroup = group
     debugOverlayGroup = nextDebugOverlayGroup
     currentFrame = nextFrame
@@ -780,6 +776,7 @@ export async function createScene(
     scene.add(treeGroup)
     scene.add(debugOverlayGroup)
     applyDebugView(currentDebugView)
+    updateChunkCulling()
 
     if (previousFrame && targetOffset) {
       const nextTarget = nextFrame.center.clone().add(targetOffset)
@@ -833,12 +830,18 @@ export async function createScene(
 
   // Animation loop
   void renderer.setAnimationLoop(() => {
-    for (const runtime of leafWindRuntimes) {
+    controls.update()
+    updateChunkCulling()
+
+    for (const chunk of chunkRenderStates) {
+      if (!chunk.visible || !chunk.leafWindRuntime) {
+        continue
+      }
+
       // Three TSL compute nodes are weakly typed, but this is the supported path.
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      void renderer.compute(runtime.computeNode)
+      void renderer.compute(chunk.leafWindRuntime.computeNode)
     }
-    controls.update()
     renderer.render(scene, camera)
     reportPerformanceStats()
   })
@@ -850,6 +853,11 @@ export async function createScene(
       runtime.dispose()
     }
     leafWindRuntimes = []
+    chunkRenderStates = []
+    currentChunkCulling = {
+      visibleChunkCount: 0,
+      culledChunkCount: 0,
+    }
     if (treeGroup) {
       scene.remove(treeGroup)
       disposeGroupResources(treeGroup)

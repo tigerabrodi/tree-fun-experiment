@@ -162,6 +162,8 @@ describe('mergeScenePerformanceStats', () => {
       geometries: 3,
       textures: 2,
       fps: 58.4,
+      visibleChunkCount: 1,
+      culledChunkCount: 0,
     })
 
     expect(merged.drawCalls).toBe(4)
@@ -170,6 +172,8 @@ describe('mergeScenePerformanceStats', () => {
     expect(merged.geometries).toBe(3)
     expect(merged.textures).toBe(2)
     expect(merged.fps).toBeCloseTo(58.4)
+    expect(merged.visibleChunkCount).toBe(1)
+    expect(merged.culledChunkCount).toBe(0)
     expect(merged.leafInstanceCount).toBe(8)
   })
 })

@@ -329,6 +329,16 @@ export function Panel({
               {formatInt(performanceStats.chunkCount)}
             </span>
 
+            <span>Visible Chunks</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.visibleChunkCount)}
+            </span>
+
+            <span>Culled Chunks</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.culledChunkCount)}
+            </span>
+
             <span>Chunk Size</span>
             <span className="text-right font-mono text-[var(--color-accent)]">
               {formatDecimal(performanceStats.chunkCellSize)}
