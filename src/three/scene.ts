@@ -3,6 +3,11 @@ import {
   type ForestInstance,
   type ForestSettings,
 } from '@/engine/forest'
+import {
+  buildForestVariantBlueprints,
+  buildTreeBlueprint,
+  type ForestVariantBlueprint,
+} from '@/engine/blueprint'
 import * as THREE from 'three/webgpu'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { initKTX2Loader, loadBarkTextures, loadLeafTexture } from './textures'
@@ -13,8 +18,8 @@ import {
   buildTrunkGeometry,
   createLeafGeometry,
 } from './tree-mesh'
-import { generateLString, interpretLString } from '@/engine/lsystem'
-import { createForestVariantConfig, type SpeciesConfig } from '@/engine/species'
+import { generateLString } from '@/engine/lsystem'
+import { type SpeciesConfig } from '@/engine/species'
 import {
   createLeafWindRuntime,
   type LeafWindRuntime,
@@ -177,53 +182,20 @@ function applyViewPreset(
 }
 
 function buildSharedForestGroup(
-  config: SpeciesConfig,
-  layout: Array<ForestInstance>,
+  variants: Array<ForestVariantBlueprint>,
   barkMaterial: THREE.Material,
-  variationSeed: number
 ): { group: THREE.Group; leafMatrices: Array<THREE.Matrix4> } {
   const group = new THREE.Group()
   const leafMatrices: Array<THREE.Matrix4> = []
-  const variantCount = Math.max(
-    1,
-    Math.min(layout.length, 12, Math.round(Math.sqrt(layout.length) * 1.1))
-  )
-  const variantStrength = 1.15 + Math.min(0.65, layout.length / 200)
-  const variantBuckets = new Array(variantCount)
-    .fill(null)
-    .map(() => [] as Array<ForestInstance>)
 
-  for (let i = 0; i < layout.length; i++) {
-    const item = layout[i]
-    const variantIndex = (Math.imul(item.seed, 2654435761) >>> 0) % variantCount
-    variantBuckets[variantIndex].push(item)
-  }
-
-  for (
-    let variantIndex = 0;
-    variantIndex < variantBuckets.length;
-    variantIndex++
-  ) {
-    const bucket = variantBuckets[variantIndex]
-    if (bucket.length === 0) continue
-
-    const variantSeed =
-      (Math.imul(bucket[0].seed ^ variationSeed, 1597334677) >>> 0 || 1) +
-      variantIndex * 9973
-    const variantConfig = createForestVariantConfig(
-      config,
-      variantSeed,
-      variantStrength
-    )
-    const lstring = generateLString(variantConfig)
-    const baseTree = interpretLString(lstring, variantConfig, variantSeed)
-    const trunkGeometry = buildTrunkGeometry(baseTree.segments)
+  for (const variant of variants) {
+    const trunkGeometry = buildTrunkGeometry(variant.blueprint.segments)
     const trunkMesh = new THREE.InstancedMesh(
       trunkGeometry,
       barkMaterial,
-      bucket.length
+      variant.instances.length
     )
-    const treeMatrices = bucket.map((item) => createTreeMatrix(item))
+    const treeMatrices = variant.instances.map((item) => createTreeMatrix(item))
 
     for (let i = 0; i < treeMatrices.length; i++) {
       trunkMesh.setMatrixAt(i, treeMatrices[i])
@@ -234,9 +206,9 @@ function buildSharedForestGroup(
     group.add(trunkMesh)
 
     const baseLeafMatrices = buildLeafMatrices(
-      baseTree.leaves,
-      variantSeed,
-      variantConfig
+      variant.blueprint.leaves,
+      variant.seed,
+      variant.config
     )
 
     for (const treeMatrix of treeMatrices) {
@@ -355,11 +327,10 @@ export async function createScene(
     let leafMatrices: Array<THREE.Matrix4> = []
 
     if (forest.mode === 'giant') {
+      const variants = buildForestVariantBlueprints(config, layout, variationSeed)
       const sharedForest = buildSharedForestGroup(
-        config,
-        layout,
+        variants,
         barkMat,
-        variationSeed
       )
       group.add(sharedForest.group)
       leafMatrices = sharedForest.leafMatrices
@@ -367,24 +338,24 @@ export async function createScene(
       const lstring = generateLString(config)
 
       for (const item of layout) {
-        const { segments, leaves } = interpretLString(
-          lstring,
-          config,
-          item.seed
-        )
+        const blueprint = buildTreeBlueprint(config, item.seed, lstring)
         const tree = new THREE.Group()
         tree.position.set(item.position.x, item.position.y, item.position.z)
         tree.rotation.y = item.rotationY
         tree.scale.setScalar(item.scale)
 
-        const trunkGeo = buildTrunkGeometry(segments)
+        const trunkGeo = buildTrunkGeometry(blueprint.segments)
         tree.add(new THREE.Mesh(trunkGeo, barkMat))
 
         group.add(tree)
 
-        if (leaves.length > 0) {
+        if (blueprint.leaves.length > 0) {
           const treeMatrix = createTreeMatrix(item)
-          const baseLeafMatrices = buildLeafMatrices(leaves, item.seed, config)
+          const baseLeafMatrices = buildLeafMatrices(
+            blueprint.leaves,
+            item.seed,
+            config
+          )
 
           for (const baseLeafMatrix of baseLeafMatrices) {
             leafMatrices.push(treeMatrix.clone().multiply(baseLeafMatrix))
