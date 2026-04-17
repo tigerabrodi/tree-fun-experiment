@@ -14,7 +14,7 @@ import {
   createLeafGeometry,
 } from './tree-mesh'
 import { generateLString, interpretLString } from '@/engine/lsystem'
-import type { SpeciesConfig } from '@/engine/species'
+import { createForestVariantConfig, type SpeciesConfig } from '@/engine/species'
 import {
   createLeafWindRuntime,
   type LeafWindRuntime,
@@ -81,10 +81,13 @@ async function getBarkTextures(species: string) {
   return barkCache.get(species)!
 }
 
-async function getLeafTexture(species: string) {
-  const key = `${species}_cluster`
+async function getLeafTexture(
+  species: string,
+  type: SpeciesConfig['leafTextureType']
+) {
+  const key = `${species}_${type}`
   if (!leafCache.has(key)) {
-    leafCache.set(key, await loadLeafTexture(species, 'cluster'))
+    leafCache.set(key, await loadLeafTexture(species, type))
   }
   return leafCache.get(key)!
 }
@@ -180,33 +183,66 @@ function buildSharedForestGroup(
   variationSeed: number
 ): { group: THREE.Group; leafMatrices: Array<THREE.Matrix4> } {
   const group = new THREE.Group()
-  const lstring = generateLString(config)
-  const baseTree = interpretLString(lstring, config, variationSeed)
-  const trunkGeometry = buildTrunkGeometry(baseTree.segments)
-  const trunkMesh = new THREE.InstancedMesh(
-    trunkGeometry,
-    barkMaterial,
-    layout.length
-  )
-  const treeMatrices = layout.map((item) => createTreeMatrix(item))
-
-  for (let i = 0; i < treeMatrices.length; i++) {
-    trunkMesh.setMatrixAt(i, treeMatrices[i])
-  }
-  trunkMesh.instanceMatrix.needsUpdate = true
-  trunkMesh.computeBoundingBox()
-  group.add(trunkMesh)
-
-  const baseLeafMatrices = buildLeafMatrices(
-    baseTree.leaves,
-    variationSeed,
-    config
-  )
   const leafMatrices: Array<THREE.Matrix4> = []
+  const variantCount = Math.max(
+    1,
+    Math.min(layout.length, 12, Math.round(Math.sqrt(layout.length) * 1.1))
+  )
+  const variantStrength = 1.15 + Math.min(0.65, layout.length / 200)
+  const variantBuckets = new Array(variantCount)
+    .fill(null)
+    .map(() => [] as Array<ForestInstance>)
 
-  for (const treeMatrix of treeMatrices) {
-    for (const baseLeafMatrix of baseLeafMatrices) {
-      leafMatrices.push(treeMatrix.clone().multiply(baseLeafMatrix))
+  for (let i = 0; i < layout.length; i++) {
+    const item = layout[i]
+    const variantIndex = (Math.imul(item.seed, 2654435761) >>> 0) % variantCount
+    variantBuckets[variantIndex].push(item)
+  }
+
+  for (
+    let variantIndex = 0;
+    variantIndex < variantBuckets.length;
+    variantIndex++
+  ) {
+    const bucket = variantBuckets[variantIndex]
+    if (bucket.length === 0) continue
+
+    const variantSeed =
+      (Math.imul(bucket[0].seed ^ variationSeed, 1597334677) >>> 0 || 1) +
+      variantIndex * 9973
+    const variantConfig = createForestVariantConfig(
+      config,
+      variantSeed,
+      variantStrength
+    )
+    const lstring = generateLString(variantConfig)
+    const baseTree = interpretLString(lstring, variantConfig, variantSeed)
+    const trunkGeometry = buildTrunkGeometry(baseTree.segments)
+    const trunkMesh = new THREE.InstancedMesh(
+      trunkGeometry,
+      barkMaterial,
+      bucket.length
+    )
+    const treeMatrices = bucket.map((item) => createTreeMatrix(item))
+
+    for (let i = 0; i < treeMatrices.length; i++) {
+      trunkMesh.setMatrixAt(i, treeMatrices[i])
+    }
+
+    trunkMesh.instanceMatrix.needsUpdate = true
+    trunkMesh.computeBoundingBox()
+    group.add(trunkMesh)
+
+    const baseLeafMatrices = buildLeafMatrices(
+      baseTree.leaves,
+      variantSeed,
+      variantConfig
+    )
+
+    for (const treeMatrix of treeMatrices) {
+      for (const baseLeafMatrix of baseLeafMatrices) {
+        leafMatrices.push(treeMatrix.clone().multiply(baseLeafMatrix))
+      }
     }
   }
 
@@ -307,7 +343,7 @@ export async function createScene(
     const group = new THREE.Group()
     const [barkTextures, leafTex] = await Promise.all([
       getBarkTextures(config.barkTexture),
-      getLeafTexture(config.leafTexture),
+      getLeafTexture(config.leafTexture, config.leafTextureType),
     ])
     const barkMat = createBarkMaterial(barkTextures, wind)
     const layout = buildForestLayout({
@@ -364,7 +400,10 @@ export async function createScene(
         leafTex,
         nextLeafWindRuntime.renderOffsetBuffer
       )
-      const leafGeo = createLeafGeometry(config.leafSize)
+      const leafGeo = createLeafGeometry(
+        config.leafSize,
+        config.leafTextureType
+      )
       const leafMesh = buildLeafMeshFromMatrices(leafGeo, leafMatrices, leafMat)
       leafMesh.frustumCulled = false
       leafMesh.computeBoundingBox()

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildLeafMatrices,
   collapseTrunkSegments,
+  createLeafGeometry,
   buildTrunkGeometry,
   buildTrunkWindProfiles,
 } from './tree-mesh'
@@ -148,6 +149,15 @@ describe('collapseTrunkSegments', () => {
 })
 
 describe('buildLeafMatrices', () => {
+  it('uses a single card for single leaf textures and a cross for clustered textures', () => {
+    const single = createLeafGeometry(1, 'single')
+    const cluster = createLeafGeometry(1, 'cluster')
+
+    expect(single.getAttribute('position').count).toBeLessThan(
+      cluster.getAttribute('position').count
+    )
+  })
+
   it('expands each leaf tip into a small deterministic cluster', () => {
     const matrices = buildLeafMatrices(
       [
@@ -161,6 +171,7 @@ describe('buildLeafMatrices', () => {
       {
         leafClusterCount: 4,
         leafClusterSpread: 0.25,
+        leafClusterStyle: 'broad',
       }
     )
 
@@ -187,6 +198,7 @@ describe('buildLeafMatrices', () => {
       {
         leafClusterCount: 4,
         leafClusterSpread: 0.25,
+        leafClusterStyle: 'broad',
       }
     )
     const repeatSecondPosition = new THREE.Vector3().setFromMatrixPosition(
@@ -196,5 +208,51 @@ describe('buildLeafMatrices', () => {
     expect(repeatSecondPosition.x).toBeCloseTo(secondPosition.x, 5)
     expect(repeatSecondPosition.y).toBeCloseTo(secondPosition.y, 5)
     expect(repeatSecondPosition.z).toBeCloseTo(secondPosition.z, 5)
+  })
+
+  it('uses wider side spread for broadleaf clusters than pine tufts', () => {
+    const broad = buildLeafMatrices(
+      [
+        {
+          position: { x: 0, y: 0, z: 0 },
+          direction: { x: 0, y: 1, z: 0 },
+          up: { x: 0, y: 0, z: 1 },
+        },
+      ],
+      42,
+      {
+        leafClusterCount: 5,
+        leafClusterSpread: 0.3,
+        leafClusterStyle: 'broad',
+      }
+    )
+    const tuft = buildLeafMatrices(
+      [
+        {
+          position: { x: 0, y: 0, z: 0 },
+          direction: { x: 0, y: 1, z: 0 },
+          up: { x: 0, y: 0, z: 1 },
+        },
+      ],
+      42,
+      {
+        leafClusterCount: 5,
+        leafClusterSpread: 0.3,
+        leafClusterStyle: 'tuft',
+      }
+    )
+
+    const broadMaxX = Math.max(
+      ...broad.map((matrix) =>
+        Math.abs(new THREE.Vector3().setFromMatrixPosition(matrix).x)
+      )
+    )
+    const tuftMaxX = Math.max(
+      ...tuft.map((matrix) =>
+        Math.abs(new THREE.Vector3().setFromMatrixPosition(matrix).x)
+      )
+    )
+
+    expect(broadMaxX).toBeGreaterThan(tuftMaxX)
   })
 })

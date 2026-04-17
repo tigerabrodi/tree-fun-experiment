@@ -13,6 +13,7 @@ export interface SpeciesConfig {
   angleVariance: number
   lengthScale: number
   lengthDecay: number
+  shortStepJitter: number
   initialRadius: number
   segmentTaper: number
   radiusDecay: number
@@ -21,6 +22,8 @@ export interface SpeciesConfig {
   leafSize: number
   leafDensity: number
   leafDepthMin: number
+  leafTextureType: 'single' | 'cluster'
+  leafClusterStyle: 'classic' | 'broad' | 'tuft' | 'airy' | 'blossom'
   leafClusterCount: number
   leafClusterSpread: number
   barkTexture: string
@@ -45,6 +48,7 @@ export const OAK: SpeciesConfig = {
   angleVariance: 10,
   lengthScale: 1.0,
   lengthDecay: 0.9,
+  shortStepJitter: 0,
   initialRadius: 0.16,
   segmentTaper: 0.987,
   radiusDecay: 0.7,
@@ -53,6 +57,8 @@ export const OAK: SpeciesConfig = {
   leafSize: 0.78,
   leafDensity: 0.96,
   leafDepthMin: 1,
+  leafTextureType: 'cluster',
+  leafClusterStyle: 'classic',
   leafClusterCount: 4,
   leafClusterSpread: 0.26,
   barkTexture: 'oak',
@@ -75,14 +81,17 @@ export const PINE: SpeciesConfig = {
   angleVariance: 3,
   lengthScale: 0.68,
   lengthDecay: 0.9,
+  shortStepJitter: 0.34,
   initialRadius: 0.18,
   segmentTaper: 0.985,
   radiusDecay: 0.82,
   branchSpin: 0,
-  branchSpinJitter: 0,
+  branchSpinJitter: 26,
   leafSize: 0.58,
   leafDensity: 1.0,
   leafDepthMin: 2,
+  leafTextureType: 'cluster',
+  leafClusterStyle: 'tuft',
   leafClusterCount: 3,
   leafClusterSpread: 0.18,
   barkTexture: 'pine',
@@ -95,11 +104,11 @@ export const BIRCH: SpeciesConfig = {
   rules: [
     {
       predecessor: 'T',
-      successor: 'F[+!B]S[-!B]S[+!B]',
+      successor: 'F[+!B]S[-!B]&S[+!B]',
     },
     {
       predecessor: 'B',
-      successor: 'F[+!B]S[-!B]F',
+      successor: 'F[+!B]S[-!B]&F',
     },
   ],
   iterations: 6,
@@ -107,6 +116,7 @@ export const BIRCH: SpeciesConfig = {
   angleVariance: 10,
   lengthScale: 0.82,
   lengthDecay: 0.92,
+  shortStepJitter: 0,
   initialRadius: 0.08,
   segmentTaper: 0.989,
   radiusDecay: 0.68,
@@ -115,6 +125,8 @@ export const BIRCH: SpeciesConfig = {
   leafSize: 0.62,
   leafDensity: 0.92,
   leafDepthMin: 2,
+  leafTextureType: 'cluster',
+  leafClusterStyle: 'airy',
   leafClusterCount: 3,
   leafClusterSpread: 0.22,
   barkTexture: 'birch',
@@ -141,6 +153,7 @@ export const MAPLE: SpeciesConfig = {
   angleVariance: 12,
   lengthScale: 0.95,
   lengthDecay: 0.9,
+  shortStepJitter: 0,
   initialRadius: 0.14,
   segmentTaper: 0.987,
   radiusDecay: 0.7,
@@ -149,6 +162,8 @@ export const MAPLE: SpeciesConfig = {
   leafSize: 0.82,
   leafDensity: 0.98,
   leafDepthMin: 2,
+  leafTextureType: 'cluster',
+  leafClusterStyle: 'classic',
   leafClusterCount: 4,
   leafClusterSpread: 0.3,
   barkTexture: 'maple',
@@ -175,6 +190,7 @@ export const SAKURA: SpeciesConfig = {
   angleVariance: 12,
   lengthScale: 0.85,
   lengthDecay: 0.9,
+  shortStepJitter: 0,
   initialRadius: 0.12,
   segmentTaper: 0.985,
   radiusDecay: 0.7,
@@ -183,6 +199,8 @@ export const SAKURA: SpeciesConfig = {
   leafSize: 0.74,
   leafDensity: 0.9,
   leafDepthMin: 2,
+  leafTextureType: 'cluster',
+  leafClusterStyle: 'blossom',
   leafClusterCount: 4,
   leafClusterSpread: 0.28,
   barkTexture: 'sakura',
@@ -195,4 +213,141 @@ export const ALL_SPECIES: Record<string, SpeciesConfig> = {
   birch: BIRCH,
   maple: MAPLE,
   sakura: SAKURA,
+}
+
+function createSeededRandom(seed: number) {
+  let rng = Math.abs(Math.floor(seed)) % 2147483647
+  if (rng === 0) rng = 1
+
+  return function random(): number {
+    rng = (rng * 16807) % 2147483647
+    return rng / 2147483647
+  }
+}
+
+function jitterRange(
+  value: number,
+  random: () => number,
+  delta: number,
+  min: number,
+  max: number
+) {
+  const next = value + (random() - 0.5) * 2 * delta
+  return Math.min(max, Math.max(min, next))
+}
+
+function jitterScale(
+  value: number,
+  random: () => number,
+  amount: number,
+  min: number,
+  max: number
+) {
+  const next = value * (1 + (random() - 0.5) * 2 * amount)
+  return Math.min(max, Math.max(min, next))
+}
+
+function jitterInteger(
+  value: number,
+  random: () => number,
+  delta: number,
+  min: number,
+  max: number
+) {
+  return Math.round(jitterRange(value, random, delta, min, max))
+}
+
+export function createForestVariantConfig(
+  config: SpeciesConfig,
+  seed: number,
+  strength = 1
+): SpeciesConfig {
+  const random = createSeededRandom(seed)
+  const scaledStrength = Math.max(0.35, strength)
+
+  return {
+    ...config,
+    angle: jitterScale(config.angle, random, 0.08 * scaledStrength, 5, 60),
+    angleVariance: jitterRange(
+      config.angleVariance,
+      random,
+      2.5 * scaledStrength,
+      0,
+      20
+    ),
+    lengthScale: jitterScale(
+      config.lengthScale,
+      random,
+      0.07 * scaledStrength,
+      0.2,
+      3
+    ),
+    lengthDecay: jitterRange(
+      config.lengthDecay,
+      random,
+      0.018 * scaledStrength,
+      0.5,
+      0.98
+    ),
+    shortStepJitter: jitterRange(
+      config.shortStepJitter,
+      random,
+      0.06 * scaledStrength,
+      0,
+      0.5
+    ),
+    initialRadius: jitterScale(
+      config.initialRadius,
+      random,
+      0.08 * scaledStrength,
+      0.03,
+      0.3
+    ),
+    segmentTaper: jitterRange(
+      config.segmentTaper,
+      random,
+      0.003 * scaledStrength,
+      0.9,
+      0.995
+    ),
+    radiusDecay: jitterRange(
+      config.radiusDecay,
+      random,
+      0.035 * scaledStrength,
+      0.4,
+      0.95
+    ),
+    branchSpin:
+      config.branchSpin === 0
+        ? 0
+        : jitterRange(config.branchSpin, random, 6 * scaledStrength, 0, 180),
+    branchSpinJitter: jitterRange(
+      config.branchSpinJitter,
+      random,
+      Math.max(4, config.branchSpinJitter * 0.18) * scaledStrength,
+      0,
+      45
+    ),
+    leafDensity: jitterRange(
+      config.leafDensity,
+      random,
+      0.04 * scaledStrength,
+      0,
+      1
+    ),
+    leafClusterCount: jitterInteger(
+      config.leafClusterCount,
+      random,
+      0.6 * scaledStrength,
+      1,
+      8
+    ),
+    leafClusterSpread: jitterScale(
+      config.leafClusterSpread,
+      random,
+      0.12 * scaledStrength,
+      0.05,
+      0.6
+    ),
+  }
 }

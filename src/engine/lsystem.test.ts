@@ -100,6 +100,23 @@ describe('interpretLString', () => {
     expect(shortLength).toBeCloseTo(0.55, 5)
   })
 
+  it('supports deterministic jitter on short continuation steps', () => {
+    const config = {
+      ...PINE,
+      lengthScale: 1.0,
+      lengthDecay: 1.0,
+      angleVariance: 0,
+      shortStepJitter: 0.3,
+    }
+    const { segments } = interpretLString('SSS', config, 42)
+    const lengths = segments.map((segment) => segment.end.y - segment.start.y)
+    const uniqueLengths = new Set(lengths.map((length) => length.toFixed(4)))
+
+    expect(uniqueLengths.size).toBeGreaterThan(1)
+    expect(Math.min(...lengths)).toBeGreaterThanOrEqual(0.55 * 0.7)
+    expect(Math.max(...lengths)).toBeLessThanOrEqual(0.55 * 1.3)
+  })
+
   it('segments connect end to start', () => {
     const config = {
       ...OAK,
@@ -359,6 +376,17 @@ describe('interpretLString', () => {
     expect(occupiedBins).toBeGreaterThanOrEqual(7)
   })
 
+  it('birch keeps some gentle downward outer branches', () => {
+    const lstring = generateLString(BIRCH)
+    const { segments } = interpretLString(lstring, BIRCH, 42)
+    const downwardOuterSegments = segments.filter((segment) => {
+      const dy = segment.end.y - segment.start.y
+      return segment.depth > 1 && dy < -0.015
+    })
+
+    expect(downwardOuterSegments.length).toBeGreaterThanOrEqual(12)
+  })
+
   it('pine preset builds layered foliage tiers instead of one tip clump', () => {
     const lstring = generateLString(PINE)
     const { segments, leaves } = interpretLString(lstring, PINE, 42)
@@ -397,5 +425,19 @@ describe('interpretLString', () => {
     expect(leaves.length).toBeGreaterThan(50)
     expect(horizontalTierSegments).toBeGreaterThan(40)
     expect(occupiedBins).toBeGreaterThanOrEqual(4)
+  })
+
+  it('pine preset varies leader spacing so tiers do not read like a perfect staircase', () => {
+    const lstring = generateLString(PINE)
+    const { segments } = interpretLString(lstring, PINE, 42)
+    const leaderSteps = segments
+      .filter((segment) => segment.depth === 0)
+      .map((segment) => segment.end.y - segment.start.y)
+      .filter((step) => step < PINE.lengthScale * 0.7)
+      .slice(0, 12)
+    const rounded = leaderSteps.map((step) => step.toFixed(3))
+
+    expect(leaderSteps.length).toBeGreaterThanOrEqual(6)
+    expect(new Set(rounded).size).toBeGreaterThanOrEqual(5)
   })
 })

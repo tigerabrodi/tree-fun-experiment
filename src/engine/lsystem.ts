@@ -131,6 +131,14 @@ export function interpretLString(
     return baseAngle + (random() - 0.5) * 2 * variance
   }
 
+  function jitterShortStep(baseLength: number): number {
+    const stepJitter = Math.max(0, config.shortStepJitter)
+    if (stepJitter === 0) return baseLength
+
+    const jitterScale = 1 + (random() - 0.5) * 2 * stepJitter
+    return baseLength * jitterScale
+  }
+
   function addLeafPoint(position: Vec3 = state.position) {
     leaves.push({
       position: cloneVec3(position),
@@ -178,7 +186,7 @@ export function interpretLString(
   for (const char of lstring) {
     switch (char) {
       case 'S': {
-        const stepLength = char === 'S' ? state.length * 0.55 : state.length
+        const stepLength = jitterShortStep(state.length * 0.55)
         const start = cloneVec3(state.position)
         const end = addScaled(state.position, state.heading, stepLength)
         const nextRadius = state.radius * config.segmentTaper
@@ -258,7 +266,7 @@ export function interpretLString(
       case '[': {
         stack.push(cloneState(state))
         state.depth++
-        if (branchSpin !== 0) {
+        if (branchSpin !== 0 || branchSpinJitter !== 0) {
           branchCount++
           const spinJitter = (random() - 0.5) * 2 * branchSpinJitter
           rotateFrameAroundHeading(state, branchCount * branchSpin + spinJitter)
