@@ -167,7 +167,10 @@ export function buildChunkLodRenderState(
   if (leafWindRuntime && sharedForest.leafMatrices.length > 0) {
     const leafMaterial = createLeafMaterial(
       leafTexture,
-      leafWindRuntime.renderOffsetBuffer
+      leafWindRuntime.renderOffsetBuffer,
+      {
+        alphaTest: variants[0].renderConfig.leafAlphaTest,
+      }
     )
     const leafGeometry = createLeafGeometry(
       variants[0].renderConfig.leafSize,

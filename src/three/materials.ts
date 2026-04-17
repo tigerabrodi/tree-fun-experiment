@@ -34,14 +34,18 @@ export function createBarkMaterial(
 
 export function createLeafMaterial(
   leafMap: THREE.Texture,
-  windOffsetBuffer: WindBufferNode | null = null
+  windOffsetBuffer: WindBufferNode | null = null,
+  options: {
+    alphaTest?: number
+  } = {}
 ): THREE.MeshStandardNodeMaterial {
   const material = new THREE.MeshStandardNodeMaterial()
+  const alphaTest = options.alphaTest ?? 0.35
 
   const leafTex = texture(leafMap)
   material.colorNode = leafTex
   material.opacityNode = leafTex.a
-  material.alphaTestNode = float(0.35)
+  material.alphaTestNode = float(alphaTest)
   material.roughnessNode = float(0.8)
   material.metalnessNode = float(0.0)
   material.side = THREE.DoubleSide

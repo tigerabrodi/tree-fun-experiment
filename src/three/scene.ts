@@ -310,6 +310,7 @@ export async function createScene(
     nearChunkCount: 0,
     midChunkCount: 0,
     farChunkCount: 0,
+    ultraFarChunkCount: 0,
   }
   let currentDebugView = normalizeDebugViewSettings(initialDebugView)
   let currentDebugSnapshot: SceneDebugSnapshot = {
@@ -330,6 +331,7 @@ export async function createScene(
         nearChunkCount: 0,
         midChunkCount: 0,
         farChunkCount: 0,
+        ultraFarChunkCount: 0,
       }
       return
     }
@@ -340,6 +342,7 @@ export async function createScene(
       nearChunkCount: 0,
       midChunkCount: 0,
       farChunkCount: 0,
+      ultraFarChunkCount: 0,
     }
 
     for (const chunk of chunkRenderStates) {
@@ -373,6 +376,9 @@ export async function createScene(
           break
         case 'far':
           currentChunkLod.farChunkCount += 1
+          break
+        case 'ultraFar':
+          currentChunkLod.ultraFarChunkCount += 1
           break
       }
     }
@@ -458,6 +464,7 @@ export async function createScene(
       nearLodChunkCount: currentChunkLod.nearChunkCount,
       midLodChunkCount: currentChunkLod.midChunkCount,
       farLodChunkCount: currentChunkLod.farChunkCount,
+      ultraFarChunkCount: currentChunkLod.ultraFarChunkCount,
     })
 
     currentDebugSnapshot = {
@@ -507,6 +514,7 @@ export async function createScene(
       nearChunkCount: 0,
       midChunkCount: 0,
       farChunkCount: 0,
+      ultraFarChunkCount: 0,
     }
 
     const group = new THREE.Group()
@@ -834,6 +842,12 @@ export async function createScene(
     currentChunkCulling = {
       visibleChunkCount: 0,
       culledChunkCount: 0,
+    }
+    currentChunkLod = {
+      nearChunkCount: 0,
+      midChunkCount: 0,
+      farChunkCount: 0,
+      ultraFarChunkCount: 0,
     }
     if (treeGroup) {
       scene.remove(treeGroup)

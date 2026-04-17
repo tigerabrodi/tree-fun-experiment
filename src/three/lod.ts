@@ -12,6 +12,7 @@ export interface ChunkLodSummary {
   nearChunkCount: number
   midChunkCount: number
   farChunkCount: number
+  ultraFarChunkCount: number
 }
 
 function distanceToBox(point: THREE.Vector3, box: THREE.Box3): number {
@@ -24,7 +25,8 @@ export function getChunkLodLevel(
   cellSize: number
 ): TreeLodLevel {
   const nearDistance = Math.max(20, cellSize * 1.6)
-  const midDistance = Math.max(52, cellSize * 4.2)
+  const midDistance = Math.max(92, cellSize * 6.4)
+  const farDistance = Math.max(168, cellSize * 10.5)
 
   if (distance <= nearDistance) {
     return 'near'
@@ -34,7 +36,11 @@ export function getChunkLodLevel(
     return 'mid'
   }
 
-  return 'far'
+  if (distance <= farDistance) {
+    return 'far'
+  }
+
+  return 'ultraFar'
 }
 
 export function applyChunkLod(
@@ -45,6 +51,7 @@ export function applyChunkLod(
     nearChunkCount: 0,
     midChunkCount: 0,
     farChunkCount: 0,
+    ultraFarChunkCount: 0,
   }
 
   for (const chunk of chunks) {
@@ -65,6 +72,9 @@ export function applyChunkLod(
         break
       case 'far':
         summary.farChunkCount += 1
+        break
+      case 'ultraFar':
+        summary.ultraFarChunkCount += 1
         break
     }
   }

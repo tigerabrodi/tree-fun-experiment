@@ -2,9 +2,14 @@ import type { TreeBlueprint } from './blueprint'
 import type { TreeSegment, LeafPoint } from './lsystem'
 import type { SpeciesConfig } from './species'
 
-export type TreeLodLevel = 'near' | 'mid' | 'far'
+export type TreeLodLevel = 'near' | 'mid' | 'far' | 'ultraFar'
 
-export const TREE_LOD_LEVELS: Array<TreeLodLevel> = ['near', 'mid', 'far']
+export const TREE_LOD_LEVELS: Array<TreeLodLevel> = [
+  'near',
+  'mid',
+  'far',
+  'ultraFar',
+]
 
 export interface TreeLodRenderConfig
   extends Pick<
@@ -16,6 +21,7 @@ export interface TreeLodRenderConfig
     | 'leafClusterSpread'
   > {
   leafGeometryType: SpeciesConfig['leafTextureType']
+  leafAlphaTest: number
   trunkRadialSegments: number
 }
 
@@ -32,6 +38,7 @@ interface TreeLodSettings {
   thinSegmentKeepRatio: number
   trunkRadialSegments: number
   leafGeometryType: SpeciesConfig['leafTextureType'] | 'preserve'
+  leafAlphaTest: number
   leafClusterCountScale: number
   leafClusterSpreadScale: number
   leafSizeScale: number
@@ -45,6 +52,7 @@ const TREE_LOD_SETTINGS: Record<TreeLodLevel, TreeLodSettings> = {
     thinSegmentKeepRatio: 1,
     trunkRadialSegments: 8,
     leafGeometryType: 'preserve',
+    leafAlphaTest: 0.35,
     leafClusterCountScale: 1,
     leafClusterSpreadScale: 1,
     leafSizeScale: 1,
@@ -56,20 +64,34 @@ const TREE_LOD_SETTINGS: Record<TreeLodLevel, TreeLodSettings> = {
     thinSegmentKeepRatio: 0.52,
     trunkRadialSegments: 6,
     leafGeometryType: 'preserve',
+    leafAlphaTest: 0.4,
     leafClusterCountScale: 0.72,
     leafClusterSpreadScale: 0.94,
     leafSizeScale: 1.04,
   },
   far: {
+    keepLeafRatio: 0.3,
+    alwaysKeepDepth: 1,
+    keepThicknessRatio: 0.46,
+    thinSegmentKeepRatio: 0.14,
+    trunkRadialSegments: 3,
+    leafGeometryType: 'preserve',
+    leafAlphaTest: 0.38,
+    leafClusterCountScale: 0.58,
+    leafClusterSpreadScale: 0.58,
+    leafSizeScale: 1.32,
+  },
+  ultraFar: {
     keepLeafRatio: 0.18,
     alwaysKeepDepth: 1,
-    keepThicknessRatio: 0.5,
-    thinSegmentKeepRatio: 0.1,
+    keepThicknessRatio: 0.58,
+    thinSegmentKeepRatio: 0.08,
     trunkRadialSegments: 3,
     leafGeometryType: 'single',
-    leafClusterCountScale: 0.16,
-    leafClusterSpreadScale: 0.34,
-    leafSizeScale: 1.08,
+    leafAlphaTest: 0.42,
+    leafClusterCountScale: 0.4,
+    leafClusterSpreadScale: 0.66,
+    leafSizeScale: 1.45,
   },
 }
 
@@ -149,6 +171,7 @@ function createTreeLodRenderConfig(
       settings.leafGeometryType === 'preserve'
         ? config.leafTextureType
         : settings.leafGeometryType,
+    leafAlphaTest: settings.leafAlphaTest,
     leafClusterStyle: config.leafClusterStyle,
     leafClusterCount: Math.max(
       1,

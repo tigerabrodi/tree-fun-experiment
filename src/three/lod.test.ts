@@ -12,10 +12,11 @@ function createCamera() {
 }
 
 describe('getChunkLodLevel', () => {
-  it('returns near for close chunks and far for distant chunks', () => {
+  it('returns near mid far and ultra far at the expected distances', () => {
     expect(getChunkLodLevel(10, 16)).toBe('near')
     expect(getChunkLodLevel(36, 16)).toBe('mid')
-    expect(getChunkLodLevel(90, 16)).toBe('far')
+    expect(getChunkLodLevel(120, 16)).toBe('far')
+    expect(getChunkLodLevel(180, 16)).toBe('ultraFar')
   })
 })
 
@@ -43,8 +44,17 @@ describe('applyChunkLod', () => {
       },
       {
         bounds: new THREE.Box3(
-          new THREE.Vector3(-4, 0, -92),
-          new THREE.Vector3(4, 12, -84)
+          new THREE.Vector3(-4, 0, -112),
+          new THREE.Vector3(4, 12, -104)
+        ),
+        cellSize: 16,
+        lodLevel: 'near' as const,
+        visible: true,
+      },
+      {
+        bounds: new THREE.Box3(
+          new THREE.Vector3(-4, 0, -188),
+          new THREE.Vector3(4, 12, -180)
         ),
         cellSize: 16,
         lodLevel: 'near' as const,
@@ -57,8 +67,10 @@ describe('applyChunkLod', () => {
     expect(summary.nearChunkCount).toBe(1)
     expect(summary.midChunkCount).toBe(1)
     expect(summary.farChunkCount).toBe(1)
+    expect(summary.ultraFarChunkCount).toBe(1)
     expect(chunks[0].lodLevel).toBe('near')
     expect(chunks[1].lodLevel).toBe('mid')
     expect(chunks[2].lodLevel).toBe('far')
+    expect(chunks[3].lodLevel).toBe('ultraFar')
   })
 })

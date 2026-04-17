@@ -34,7 +34,8 @@ export function App() {
       const hasLodStats =
         Number.isFinite(stats.nearLodChunkCount) &&
         Number.isFinite(stats.midLodChunkCount) &&
-        Number.isFinite(stats.farLodChunkCount)
+        Number.isFinite(stats.farLodChunkCount) &&
+        Number.isFinite(stats.ultraFarChunkCount)
 
       if (!hasLodStats) {
         if (!perfRecoveryTriggeredRef.current) {

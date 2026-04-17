@@ -362,6 +362,11 @@ export function Panel({
               {formatInt(performanceStats.farLodChunkCount)}
             </span>
 
+            <span>LOD Ultra Far</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.ultraFarChunkCount)}
+            </span>
+
             <span>Chunk Size</span>
             <span className="text-right font-mono text-[var(--color-accent)]">
               {formatDecimal(performanceStats.chunkCellSize)}
