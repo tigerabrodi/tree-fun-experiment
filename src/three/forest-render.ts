@@ -14,13 +14,20 @@ import {
   buildTrunkGeometry,
   createLeafGeometry,
 } from './tree-mesh'
-import { createLeafWindRuntime, type LeafWindRuntime, type WindSettings } from './wind'
+import {
+  createLeafWindRuntime,
+  getWindLodProfile,
+  scaleWindSettings,
+  type LeafWindRuntime,
+  type WindSettings,
+} from './wind'
 import type { ChunkPerformanceSummary } from './performance'
 
 export interface ChunkLodRenderState {
   group: THREE.Group
   leafWindRuntime: LeafWindRuntime | null
   leafInstanceCount: number
+  windMode: 'animated' | 'static'
 }
 
 export interface ForestSharedRenderVariant {
@@ -152,6 +159,7 @@ export function buildChunkLodVariants(
 }
 
 export function buildChunkLodRenderState(
+  level: TreeLodLevel,
   variants: Array<ForestSharedRenderVariant>,
   barkMaterial: THREE.Material,
   leafTexture: THREE.Texture,
@@ -162,7 +170,14 @@ export function buildChunkLodRenderState(
 
   group.add(sharedForest.group)
 
-  const leafWindRuntime = createLeafWindRuntime(sharedForest.leafMatrices, wind)
+  const windProfile = getWindLodProfile(level)
+  const leafWindRuntime = createLeafWindRuntime(
+    sharedForest.leafMatrices,
+    scaleWindSettings(wind, windProfile),
+    {
+      animate: windProfile.animate,
+    }
+  )
 
   if (leafWindRuntime && sharedForest.leafMatrices.length > 0) {
     const leafMaterial = createLeafMaterial(
@@ -193,5 +208,6 @@ export function buildChunkLodRenderState(
     group,
     leafWindRuntime,
     leafInstanceCount: sharedForest.leafMatrices.length,
+    windMode: leafWindRuntime?.windMode ?? 'static',
   }
 }

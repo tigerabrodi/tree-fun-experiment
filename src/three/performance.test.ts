@@ -168,6 +168,8 @@ describe('mergeScenePerformanceStats', () => {
       midLodChunkCount: 0,
       farLodChunkCount: 0,
       ultraFarChunkCount: 0,
+      windAnimatedChunkCount: 1,
+      windStaticChunkCount: 0,
     })
 
     expect(merged.drawCalls).toBe(4)
@@ -182,6 +184,8 @@ describe('mergeScenePerformanceStats', () => {
     expect(merged.midLodChunkCount).toBe(0)
     expect(merged.farLodChunkCount).toBe(0)
     expect(merged.ultraFarChunkCount).toBe(0)
+    expect(merged.windAnimatedChunkCount).toBe(1)
+    expect(merged.windStaticChunkCount).toBe(0)
     expect(merged.leafInstanceCount).toBe(8)
   })
 })

@@ -2,7 +2,7 @@ import {
   buildForestLayout,
   type ForestSettings,
 } from '@/engine/forest'
-import { buildForestChunks, type ForestChunk } from '@/engine/chunks'
+import { buildForestChunks } from '@/engine/chunks'
 import {
   buildForestVariantBlueprints,
   buildTreeBlueprint,
@@ -15,7 +15,7 @@ import {
 } from '@/engine/lod'
 import * as THREE from 'three/webgpu'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { initKTX2Loader, loadBarkTextures, loadLeafTexture } from './textures'
+import { initKTX2Loader } from './textures'
 import { createBarkMaterial, createLeafMaterial } from './materials'
 import {
   buildLeafMatrices,
@@ -51,9 +51,22 @@ import {
   type StaticScenePerformanceStats,
 } from './performance'
 import { normalizeDebugViewSettings, type DebugViewSettings } from './debug'
+import {
+  createChunkVariationSeed,
+  disposeGroupResources,
+  getBarkTextures,
+  getLeafTexture,
+  setMaterialWireframe,
+} from './scene-support'
+import {
+  applyViewPreset,
+  cloneSceneFrame,
+  createSceneFrame,
+  type SceneFrame,
+  type ViewPreset,
+} from './view-frame'
 
-export type ViewPreset = 'front' | 'quarter' | 'side' | 'top' | 'close'
-
+export type { ViewPreset } from './view-frame'
 export interface SceneContext {
   renderer: THREE.WebGPURenderer
   scene: THREE.Scene
@@ -70,19 +83,6 @@ export interface SceneContext {
   getDebugSnapshot: () => SceneDebugSnapshot
   dispose: () => void
 }
-
-const barkCache = new Map<
-  string,
-  Awaited<ReturnType<typeof loadBarkTextures>>
->()
-const leafCache = new Map<string, THREE.Texture>()
-
-interface SceneFrame {
-  center: THREE.Vector3
-  size: THREE.Vector3
-  forestMode: ForestSettings['mode']
-}
-
 interface ChunkRenderState {
   id: string
   group: THREE.Group
@@ -92,145 +92,6 @@ interface ChunkRenderState {
   lodStates: Partial<Record<TreeLodLevel, ChunkLodRenderState>>
   visible: boolean
 }
-
-function disposeGroupResources(group: THREE.Group) {
-  const materials = new Set<THREE.Material>()
-
-  group.traverse((obj) => {
-    if (
-      obj instanceof THREE.Mesh ||
-      obj instanceof THREE.InstancedMesh ||
-      obj instanceof THREE.LineSegments
-    ) {
-      const geometry = obj.geometry as THREE.BufferGeometry
-      const material = obj.material as THREE.Material | Array<THREE.Material>
-
-      geometry.dispose()
-      if (Array.isArray(material)) {
-        for (const materialItem of material) {
-          materials.add(materialItem)
-        }
-      } else {
-        materials.add(material)
-      }
-    }
-  })
-
-  for (const material of materials) {
-    material.dispose()
-  }
-}
-
-function setMaterialWireframe(material: THREE.Material, enabled: boolean) {
-  const materialWithWireframe = material as THREE.Material & {
-    wireframe?: boolean
-  }
-
-  if ('wireframe' in materialWithWireframe) {
-    materialWithWireframe.wireframe = enabled
-    material.needsUpdate = true
-  }
-}
-
-async function getBarkTextures(species: string) {
-  if (!barkCache.has(species)) {
-    barkCache.set(species, await loadBarkTextures(species))
-  }
-  return barkCache.get(species)!
-}
-
-async function getLeafTexture(
-  species: string,
-  type: SpeciesConfig['leafTextureType']
-) {
-  const key = `${species}_${type}`
-  if (!leafCache.has(key)) {
-    leafCache.set(key, await loadLeafTexture(species, type))
-  }
-  return leafCache.get(key)!
-}
-
-function createChunkVariationSeed(
-  chunk: ForestChunk,
-  variationSeed: number
-): number {
-  return (
-    (Math.imul(chunk.gridX ^ variationSeed, 73856093) ^
-      Math.imul(chunk.gridZ ^ variationSeed, 19349663)) >>>
-      0 || 1
-  )
-}
-
-function createSceneFrame(
-  box: THREE.Box3,
-  forestMode: ForestSettings['mode']
-): SceneFrame {
-  return {
-    center: box.getCenter(new THREE.Vector3()),
-    size: box.getSize(new THREE.Vector3()),
-    forestMode,
-  }
-}
-
-function cloneSceneFrame(frame: SceneFrame): SceneFrame {
-  return {
-    center: frame.center.clone(),
-    size: frame.size.clone(),
-    forestMode: frame.forestMode,
-  }
-}
-
-function applyViewPreset(
-  camera: THREE.PerspectiveCamera,
-  controls: OrbitControls,
-  frame: SceneFrame,
-  preset: ViewPreset
-) {
-  const maxDim = Math.max(frame.size.x, frame.size.y, frame.size.z)
-  const fov = camera.fov * (Math.PI / 180)
-  const dist = (maxDim / (2 * Math.tan(fov / 2))) * 1.4
-  const target = frame.center.clone()
-
-  if (frame.forestMode === 'giant') {
-    target.y *= 0.55
-  }
-
-  let offset: THREE.Vector3
-
-  switch (preset) {
-    case 'front':
-      offset = new THREE.Vector3(0, maxDim * 0.06, dist)
-      break
-    case 'side':
-      offset = new THREE.Vector3(dist, maxDim * 0.06, 0)
-      break
-    case 'top':
-      offset =
-        frame.forestMode === 'giant'
-          ? new THREE.Vector3(dist * 0.05, dist * 1.15, dist * 0.05)
-          : new THREE.Vector3(dist * 0.04, dist * 1.12, dist * 0.04)
-      break
-    case 'close':
-      offset =
-        frame.forestMode === 'giant'
-          ? new THREE.Vector3(dist * 0.16, maxDim * 0.04, dist * 0.42)
-          : new THREE.Vector3(dist * 0.18, maxDim * 0.05, dist * 0.48)
-      break
-    case 'quarter':
-    default:
-      offset =
-        frame.forestMode === 'giant'
-          ? new THREE.Vector3(dist * 0.32, maxDim * 0.08, dist * 0.9)
-          : new THREE.Vector3(dist * 0.4, maxDim * 0.08, dist * 0.92)
-      break
-  }
-
-  controls.target.copy(target)
-  camera.position.copy(target.clone().add(offset))
-  controls.update()
-}
-
-
 export async function createScene(
   canvas: HTMLCanvasElement,
   initialConfig: SpeciesConfig,
@@ -312,6 +173,10 @@ export async function createScene(
     farChunkCount: 0,
     ultraFarChunkCount: 0,
   }
+  let currentWindLod = {
+    animatedChunkCount: 0,
+    staticChunkCount: 0,
+  }
   let currentDebugView = normalizeDebugViewSettings(initialDebugView)
   let currentDebugSnapshot: SceneDebugSnapshot = {
     performance: null,
@@ -333,6 +198,10 @@ export async function createScene(
         farChunkCount: 0,
         ultraFarChunkCount: 0,
       }
+      currentWindLod = {
+        animatedChunkCount: 0,
+        staticChunkCount: 0,
+      }
       return
     }
 
@@ -343,6 +212,10 @@ export async function createScene(
       midChunkCount: 0,
       farChunkCount: 0,
       ultraFarChunkCount: 0,
+    }
+    currentWindLod = {
+      animatedChunkCount: 0,
+      staticChunkCount: 0,
     }
 
     for (const chunk of chunkRenderStates) {
@@ -380,6 +253,13 @@ export async function createScene(
         case 'ultraFar':
           currentChunkLod.ultraFarChunkCount += 1
           break
+      }
+
+      const activeLodState = chunk.lodStates[chunk.lodLevel]
+      if (activeLodState?.windMode === 'animated') {
+        currentWindLod.animatedChunkCount += 1
+      } else {
+        currentWindLod.staticChunkCount += 1
       }
     }
   }
@@ -465,6 +345,8 @@ export async function createScene(
       midLodChunkCount: currentChunkLod.midChunkCount,
       farLodChunkCount: currentChunkLod.farChunkCount,
       ultraFarChunkCount: currentChunkLod.ultraFarChunkCount,
+      windAnimatedChunkCount: currentWindLod.animatedChunkCount,
+      windStaticChunkCount: currentWindLod.staticChunkCount,
     })
 
     currentDebugSnapshot = {
@@ -516,6 +398,14 @@ export async function createScene(
       farChunkCount: 0,
       ultraFarChunkCount: 0,
     }
+    currentWindLod = {
+      animatedChunkCount: 0,
+      staticChunkCount: 0,
+    }
+    currentWindLod = {
+      animatedChunkCount: 0,
+      staticChunkCount: 0,
+    }
 
     const group = new THREE.Group()
     const nextLeafWindRuntimes: Array<LeafWindRuntime> = []
@@ -559,6 +449,7 @@ export async function createScene(
               ? singleLeafTex
               : clusterLeafTex
           const lodState = buildChunkLodRenderState(
+            level,
             renderVariants,
             barkMat,
             leafTexture,
@@ -694,6 +585,7 @@ export async function createScene(
             group,
             leafWindRuntime: nextLeafWindRuntime ?? null,
             leafInstanceCount: leafMatrices.length,
+            windMode: nextLeafWindRuntime?.windMode ?? 'static',
           },
         },
         visible: true,
@@ -819,13 +711,17 @@ export async function createScene(
     for (const chunk of chunkRenderStates) {
       const activeLodState = chunk.lodStates[chunk.lodLevel]
 
-      if (!chunk.visible || !activeLodState?.leafWindRuntime) {
+      if (
+        !chunk.visible ||
+        !activeLodState?.leafWindRuntime ||
+        !activeLodState.leafWindRuntime.computeNode
+      ) {
         continue
       }
 
-      // Three TSL compute nodes are weakly typed, but this is the supported path.
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      void renderer.compute(activeLodState.leafWindRuntime.computeNode)
+      void renderer.compute(
+        activeLodState.leafWindRuntime.computeNode as THREE.ComputeNode
+      )
     }
     renderer.render(scene, camera)
     reportPerformanceStats()
@@ -848,6 +744,10 @@ export async function createScene(
       midChunkCount: 0,
       farChunkCount: 0,
       ultraFarChunkCount: 0,
+    }
+    currentWindLod = {
+      animatedChunkCount: 0,
+      staticChunkCount: 0,
     }
     if (treeGroup) {
       scene.remove(treeGroup)

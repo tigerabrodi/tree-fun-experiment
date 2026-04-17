@@ -367,6 +367,16 @@ export function Panel({
               {formatInt(performanceStats.ultraFarChunkCount)}
             </span>
 
+            <span>Wind Animated</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.windAnimatedChunkCount)}
+            </span>
+
+            <span>Wind Static</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.windStaticChunkCount)}
+            </span>
+
             <span>Chunk Size</span>
             <span className="text-right font-mono text-[var(--color-accent)]">
               {formatDecimal(performanceStats.chunkCellSize)}

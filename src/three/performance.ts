@@ -47,6 +47,8 @@ export interface ScenePerformanceStats extends StaticScenePerformanceStats {
   midLodChunkCount: number
   farLodChunkCount: number
   ultraFarChunkCount: number
+  windAnimatedChunkCount: number
+  windStaticChunkCount: number
 }
 
 export interface SceneDebugSnapshot {
@@ -87,6 +89,8 @@ interface LiveRenderPerformanceStats {
   midLodChunkCount: number
   farLodChunkCount: number
   ultraFarChunkCount: number
+  windAnimatedChunkCount: number
+  windStaticChunkCount: number
 }
 
 function roundRebuildMs(rebuildMs: number): number {

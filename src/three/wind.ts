@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
 import * as THREE from 'three/webgpu'
+import type { TreeLodLevel } from '@/engine/lod'
 import {
   Fn,
   cos,
@@ -22,6 +23,12 @@ export interface WindSettings {
   direction: number
 }
 
+export interface WindLodProfile {
+  animate: boolean
+  strengthScale: number
+  speedScale: number
+}
+
 export const DEFAULT_WIND_SETTINGS: WindSettings = {
   strength: 0.38,
   speed: 1.0,
@@ -31,11 +38,35 @@ export const DEFAULT_WIND_SETTINGS: WindSettings = {
 export type WindBufferNode = any
 
 export interface LeafWindRuntime {
-  computeNode: any
+  computeNode: object | null
   offsetBuffer: WindBufferNode
   renderOffsetBuffer: WindBufferNode
+  windMode: 'animated' | 'static'
   applySettings: (settings: WindSettings) => void
   dispose: () => void
+}
+
+const WIND_LOD_PROFILES: Record<TreeLodLevel, WindLodProfile> = {
+  near: {
+    animate: true,
+    strengthScale: 1,
+    speedScale: 1,
+  },
+  mid: {
+    animate: true,
+    strengthScale: 0.72,
+    speedScale: 0.82,
+  },
+  far: {
+    animate: false,
+    strengthScale: 0,
+    speedScale: 0,
+  },
+  ultraFar: {
+    animate: false,
+    strengthScale: 0,
+    speedScale: 0,
+  },
 }
 
 export function directionDegreesToVector(direction: number): THREE.Vector3 {
@@ -77,22 +108,53 @@ export function packLeafWindData(
   return packed
 }
 
+export function getWindLodProfile(level: TreeLodLevel): WindLodProfile {
+  return WIND_LOD_PROFILES[level]
+}
+
+export function scaleWindSettings(
+  settings: WindSettings,
+  profile: WindLodProfile
+): WindSettings {
+  return {
+    strength: settings.strength * profile.strengthScale,
+    speed: settings.speed * profile.speedScale,
+    direction: settings.direction,
+  }
+}
+
 export function createLeafWindRuntime(
   leafMatrices: Array<THREE.Matrix4>,
-  settings: WindSettings
+  settings: WindSettings,
+  options: {
+    animate?: boolean
+  } = {}
 ): LeafWindRuntime | null {
   if (leafMatrices.length === 0) {
     return null
   }
 
-  const basePositions = instancedArray(packLeafWindData(leafMatrices), 'vec4')
-    .setName('LeafBasePositions')
-    .toReadOnly()
   const offsets = instancedArray(leafMatrices.length, 'vec3').setName(
     'LeafWindOffsets'
   )
   const renderOffsets = storage(offsets.value, 'vec3', leafMatrices.length)
     .setName('LeafWindOffsetsRead')
+    .toReadOnly()
+  const shouldAnimate = options.animate ?? true
+
+  if (!shouldAnimate) {
+    return {
+      computeNode: null,
+      offsetBuffer: offsets,
+      renderOffsetBuffer: renderOffsets,
+      windMode: 'static',
+      applySettings() {},
+      dispose() {},
+    }
+  }
+
+  const basePositions = instancedArray(packLeafWindData(leafMatrices), 'vec4')
+    .setName('LeafBasePositions')
     .toReadOnly()
   const strengthUniform = uniform(settings.strength, 'float').setName(
     'windStrength'
@@ -180,6 +242,7 @@ export function createLeafWindRuntime(
     computeNode,
     offsetBuffer: offsets,
     renderOffsetBuffer: renderOffsets,
+    windMode: 'animated',
     applySettings(nextSettings) {
       strengthUniform.value = nextSettings.strength
       speedUniform.value = nextSettings.speed

@@ -35,7 +35,9 @@ export function App() {
         Number.isFinite(stats.nearLodChunkCount) &&
         Number.isFinite(stats.midLodChunkCount) &&
         Number.isFinite(stats.farLodChunkCount) &&
-        Number.isFinite(stats.ultraFarChunkCount)
+        Number.isFinite(stats.ultraFarChunkCount) &&
+        Number.isFinite(stats.windAnimatedChunkCount) &&
+        Number.isFinite(stats.windStaticChunkCount)
 
       if (!hasLodStats) {
         if (!perfRecoveryTriggeredRef.current) {
