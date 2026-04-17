@@ -1,13 +1,30 @@
 import type { ForestInstance, ForestMode } from '@/engine/forest'
-import type {
-  ForestVariantBlueprint,
-  TreeBlueprint,
-} from '@/engine/blueprint'
+import type { ForestVariantBlueprint, TreeBlueprint } from '@/engine/blueprint'
+import type { DebugViewSettings } from './debug'
+
+export interface ChunkPerformanceSummary {
+  id: string
+  treeCount: number
+  variantCount: number
+  woodDrawBatches: number
+  woodInstanceCount: number
+  leafAnchorCount: number
+  leafInstanceCount: number
+  branchSegmentCount: number
+  cellSize: number
+  centerX: number
+  centerZ: number
+}
 
 export interface StaticScenePerformanceStats {
   forestMode: ForestMode
   treeCount: number
   uniqueBlueprintCount: number
+  chunkCount: number
+  chunkCellSize: number
+  chunkTreeMin: number
+  chunkTreeMax: number
+  chunkTreeAverage: number
   woodDrawBatches: number
   woodInstanceCount: number
   leafDrawBatches: number
@@ -26,20 +43,29 @@ export interface ScenePerformanceStats extends StaticScenePerformanceStats {
   fps: number
 }
 
+export interface SceneDebugSnapshot {
+  performance: ScenePerformanceStats | null
+  chunks: Array<ChunkPerformanceSummary>
+  debugView: DebugViewSettings
+}
+
 interface SingleForestPerformanceInput {
   forestMode: ForestMode
   layout: Array<ForestInstance>
   blueprints: Array<TreeBlueprint>
   leafInstanceCount: number
   rebuildMs: number
+  chunkCellSize: number
 }
 
 interface GiantForestPerformanceInput {
   forestMode: ForestMode
   layout: Array<ForestInstance>
   variants: Array<ForestVariantBlueprint>
+  chunks: Array<ChunkPerformanceSummary>
   leafInstanceCount: number
   rebuildMs: number
+  chunkCellSize: number
 }
 
 interface LiveRenderPerformanceStats {
@@ -71,6 +97,11 @@ export function summarizeSingleForestPerformance(
     forestMode: input.forestMode,
     treeCount: input.layout.length,
     uniqueBlueprintCount: input.blueprints.length,
+    chunkCount: 1,
+    chunkCellSize: input.chunkCellSize,
+    chunkTreeMin: input.layout.length,
+    chunkTreeMax: input.layout.length,
+    chunkTreeAverage: input.layout.length,
     woodDrawBatches: input.blueprints.length,
     woodInstanceCount: input.layout.length,
     leafDrawBatches: input.leafInstanceCount > 0 ? 1 : 0,
@@ -95,13 +126,31 @@ export function summarizeGiantForestPerformance(
     0
   )
 
+  const chunkTreeCounts = input.chunks.map((chunk) => chunk.treeCount)
+  const chunkTreeTotal = chunkTreeCounts.reduce(
+    (count, value) => count + value,
+    0
+  )
+
   return {
     forestMode: input.forestMode,
     treeCount: input.layout.length,
     uniqueBlueprintCount: input.variants.length,
-    woodDrawBatches: input.variants.length,
+    chunkCount: input.chunks.length,
+    chunkCellSize: input.chunkCellSize,
+    chunkTreeMin: chunkTreeCounts.length > 0 ? Math.min(...chunkTreeCounts) : 0,
+    chunkTreeMax: chunkTreeCounts.length > 0 ? Math.max(...chunkTreeCounts) : 0,
+    chunkTreeAverage:
+      chunkTreeCounts.length > 0 ? chunkTreeTotal / chunkTreeCounts.length : 0,
+    woodDrawBatches: input.chunks.reduce(
+      (count, chunk) => count + chunk.woodDrawBatches,
+      0
+    ),
     woodInstanceCount: input.layout.length,
-    leafDrawBatches: input.leafInstanceCount > 0 ? 1 : 0,
+    leafDrawBatches: input.chunks.reduce(
+      (count, chunk) => count + (chunk.leafInstanceCount > 0 ? 1 : 0),
+      0
+    ),
     leafAnchorCount,
     leafInstanceCount: input.leafInstanceCount,
     branchSegmentCount,

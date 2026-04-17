@@ -7,15 +7,18 @@ import { ALL_SPECIES, type SpeciesConfig } from '@/engine/species'
 import type { ViewPreset } from '@/three/scene'
 import { type WindSettings } from '@/three/wind'
 import type { ScenePerformanceStats } from '@/three/performance'
+import { toggleDebugViewSetting, type DebugViewSettings } from '@/three/debug'
 
 interface PanelProps {
   config: SpeciesConfig
   forest: ForestSettings
   wind: WindSettings
+  debugView: DebugViewSettings
   performanceStats: ScenePerformanceStats | null
   onChange: (config: SpeciesConfig) => void
   onForestChange: (forest: ForestSettings) => void
   onWindChange: (wind: WindSettings) => void
+  onDebugViewChange: (debugView: DebugViewSettings) => void
   onRegenerate: () => void
   onViewPreset: (preset: ViewPreset) => void
 }
@@ -62,10 +65,12 @@ export function Panel({
   config,
   forest,
   wind,
+  debugView,
   performanceStats,
   onChange,
   onForestChange,
   onWindChange,
+  onDebugViewChange,
   onRegenerate,
   onViewPreset,
 }: PanelProps) {
@@ -85,12 +90,23 @@ export function Panel({
     onWindChange({ ...wind, ...partial })
   }
 
+  function toggleDebugView(key: keyof DebugViewSettings) {
+    onDebugViewChange(toggleDebugViewSetting(debugView, key))
+  }
+
   function formatInt(value: number) {
     return new Intl.NumberFormat('en-US').format(Math.round(value))
   }
 
   function formatDecimal(value: number) {
     return value.toFixed(1)
+  }
+
+  async function copyPerformanceJson() {
+    const snapshot = window.__treeDebug?.getSnapshot() ?? {
+      performance: performanceStats,
+    }
+    await navigator.clipboard.writeText(JSON.stringify(snapshot, null, 2))
   }
 
   return (
@@ -308,6 +324,26 @@ export function Panel({
               {formatInt(performanceStats.treeCount)}
             </span>
 
+            <span>Chunks</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.chunkCount)}
+            </span>
+
+            <span>Chunk Size</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatDecimal(performanceStats.chunkCellSize)}
+            </span>
+
+            <span>Trees per Chunk</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {`${formatDecimal(performanceStats.chunkTreeAverage)} avg`}
+            </span>
+
+            <span>Chunk Range</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {`${formatInt(performanceStats.chunkTreeMin)}-${formatInt(performanceStats.chunkTreeMax)}`}
+            </span>
+
             <span>Base Variants</span>
             <span className="text-right font-mono text-[var(--color-accent)]">
               {formatInt(performanceStats.uniqueBlueprintCount)}
@@ -352,6 +388,15 @@ export function Panel({
             <span className="text-right font-mono text-[var(--color-accent)]">
               {formatInt(performanceStats.textures)}
             </span>
+
+            <button
+              onClick={() => {
+                void copyPerformanceJson()
+              }}
+              className="tree-button-secondary col-span-2 mt-2"
+            >
+              Copy JSON
+            </button>
           </div>
         ) : (
           <div className="text-[13px] text-[var(--color-text-dim)]">
@@ -394,6 +439,32 @@ export function Panel({
             className="tree-button-secondary"
           >
             Close
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-5">
+        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] tracking-[0.12em] text-[var(--color-text-dim)] uppercase">
+          Debug
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => toggleDebugView('showChunkBounds')}
+            className={`tree-button-secondary ${debugView.showChunkBounds ? 'is-active' : ''}`}
+          >
+            Chunk Bounds
+          </button>
+          <button
+            onClick={() => toggleDebugView('showWireframe')}
+            className={`tree-button-secondary ${debugView.showWireframe ? 'is-active' : ''}`}
+          >
+            Wireframe
+          </button>
+          <button
+            onClick={() => toggleDebugView('showWoodOnly')}
+            className={`tree-button-secondary ${debugView.showWoodOnly ? 'is-active' : ''}`}
+          >
+            Wood Only
           </button>
         </div>
       </div>

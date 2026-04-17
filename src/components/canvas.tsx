@@ -4,11 +4,13 @@ import { createScene, type SceneContext } from '@/three/scene'
 import type { SpeciesConfig } from '@/engine/species'
 import type { WindSettings } from '@/three/wind'
 import type { ScenePerformanceStats } from '@/three/performance'
+import type { DebugViewSettings } from '@/three/debug'
 
 interface CanvasProps {
   config: SpeciesConfig
   forest: ForestSettings
   wind: WindSettings
+  debugView: DebugViewSettings
   variationSeed: number
   sceneRef: React.RefObject<SceneContext | null>
   onPerformanceStatsChange?: (stats: ScenePerformanceStats) => void
@@ -18,6 +20,7 @@ export function TreeCanvas({
   config,
   forest,
   wind,
+  debugView,
   variationSeed,
   sceneRef,
   onPerformanceStatsChange,
@@ -37,17 +40,17 @@ export function TreeCanvas({
       forest,
       wind,
       variationSeed,
+      debugView,
       onPerformanceStatsChange
-    ).then(
-      (scene) => {
-        if (isStale) {
-          scene.dispose()
-          return
-        }
-        ctx = scene
-        sceneRef.current = scene
+    ).then((scene) => {
+      if (isStale) {
+        scene.dispose()
+        return
       }
-    )
+      ctx = scene
+      scene.setDebugView(debugView)
+      sceneRef.current = scene
+    })
 
     return () => {
       isStale = true
@@ -56,6 +59,10 @@ export function TreeCanvas({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    sceneRef.current?.setDebugView(debugView)
+  }, [debugView, sceneRef])
 
   return <canvas ref={canvasRef} className="block h-full min-h-0 flex-1" />
 }

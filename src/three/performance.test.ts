@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ForestInstance } from '../engine/forest'
-import type {
-  ForestVariantBlueprint,
-  TreeBlueprint,
-} from '../engine/blueprint'
+import type { ForestVariantBlueprint, TreeBlueprint } from '../engine/blueprint'
 import { OAK } from '../engine/species'
 import {
   mergeScenePerformanceStats,
@@ -55,10 +52,16 @@ describe('summarizeSingleForestPerformance', () => {
       blueprints,
       leafInstanceCount: 27,
       rebuildMs: 14.2,
+      chunkCellSize: 36,
     })
 
     expect(stats.treeCount).toBe(2)
     expect(stats.uniqueBlueprintCount).toBe(2)
+    expect(stats.chunkCount).toBe(1)
+    expect(stats.chunkCellSize).toBe(36)
+    expect(stats.chunkTreeMin).toBe(2)
+    expect(stats.chunkTreeMax).toBe(2)
+    expect(stats.chunkTreeAverage).toBe(2)
     expect(stats.woodDrawBatches).toBe(2)
     expect(stats.woodInstanceCount).toBe(2)
     expect(stats.leafAnchorCount).toBe(9)
@@ -85,19 +88,55 @@ describe('summarizeGiantForestPerformance', () => {
         blueprint: makeBlueprint(22, 8, 5),
       },
     ]
+    const chunks = [
+      {
+        id: '0:0',
+        treeCount: 2,
+        variantCount: 1,
+        woodDrawBatches: 1,
+        woodInstanceCount: 2,
+        leafAnchorCount: 6,
+        leafInstanceCount: 18,
+        branchSegmentCount: 12,
+        cellSize: 16,
+        centerX: 0,
+        centerZ: 0,
+      },
+      {
+        id: '1:0',
+        treeCount: 1,
+        variantCount: 1,
+        woodDrawBatches: 1,
+        woodInstanceCount: 1,
+        leafAnchorCount: 5,
+        leafInstanceCount: 13,
+        branchSegmentCount: 8,
+        cellSize: 16,
+        centerX: 16,
+        centerZ: 0,
+      },
+    ]
 
     const stats = summarizeGiantForestPerformance({
       forestMode: 'giant',
       layout,
       variants,
+      chunks,
       leafInstanceCount: 31,
       rebuildMs: 22.8,
+      chunkCellSize: 16,
     })
 
     expect(stats.treeCount).toBe(3)
     expect(stats.uniqueBlueprintCount).toBe(2)
+    expect(stats.chunkCount).toBe(2)
+    expect(stats.chunkCellSize).toBe(16)
+    expect(stats.chunkTreeMin).toBe(1)
+    expect(stats.chunkTreeMax).toBe(2)
+    expect(stats.chunkTreeAverage).toBeCloseTo(1.5)
     expect(stats.woodDrawBatches).toBe(2)
     expect(stats.woodInstanceCount).toBe(3)
+    expect(stats.leafDrawBatches).toBe(2)
     expect(stats.leafAnchorCount).toBe(11)
     expect(stats.leafInstanceCount).toBe(31)
     expect(stats.branchSegmentCount).toBe(20)
@@ -113,6 +152,7 @@ describe('mergeScenePerformanceStats', () => {
       blueprints: [makeBlueprint(1, 7, 2)],
       leafInstanceCount: 8,
       rebuildMs: 9.5,
+      chunkCellSize: 24,
     })
 
     const merged = mergeScenePerformanceStats(staticStats, {

@@ -6,6 +6,10 @@ import { OAK, type SpeciesConfig } from '@/engine/species'
 import type { SceneContext, ViewPreset } from '@/three/scene'
 import { DEFAULT_WIND_SETTINGS, type WindSettings } from '@/three/wind'
 import type { ScenePerformanceStats } from '@/three/performance'
+import {
+  DEFAULT_DEBUG_VIEW_SETTINGS,
+  type DebugViewSettings,
+} from '@/three/debug'
 
 function createVariationSeed(): number {
   return Math.floor(Math.random() * 2147483646) + 1
@@ -15,6 +19,9 @@ export function App() {
   const [config, setConfig] = useState<SpeciesConfig>(OAK)
   const [forest, setForest] = useState<ForestSettings>(SINGLE_TREE_FOREST)
   const [wind, setWind] = useState<WindSettings>(DEFAULT_WIND_SETTINGS)
+  const [debugView, setDebugView] = useState<DebugViewSettings>(
+    DEFAULT_DEBUG_VIEW_SETTINGS
+  )
   const [variationSeed, setVariationSeed] = useState(createVariationSeed)
   const [performanceStats, setPerformanceStats] =
     useState<ScenePerformanceStats | null>(null)
@@ -71,16 +78,26 @@ export function App() {
     sceneRef.current?.setViewPreset(preset)
   }, [])
 
+  const handleDebugViewChange = useCallback(
+    (nextDebugView: DebugViewSettings) => {
+      setDebugView(nextDebugView)
+      sceneRef.current?.setDebugView(nextDebugView)
+    },
+    []
+  )
+
   return (
     <div className="flex h-dvh bg-[var(--color-bg)]">
       <Panel
         config={config}
         forest={forest}
         wind={wind}
+        debugView={debugView}
         performanceStats={performanceStats}
         onChange={handleChange}
         onForestChange={handleForestChange}
         onWindChange={handleWindChange}
+        onDebugViewChange={handleDebugViewChange}
         onRegenerate={handleRegenerate}
         onViewPreset={handleViewPreset}
       />
@@ -88,6 +105,7 @@ export function App() {
         config={config}
         forest={forest}
         wind={wind}
+        debugView={debugView}
         variationSeed={variationSeed}
         sceneRef={sceneRef}
         onPerformanceStatsChange={setPerformanceStats}

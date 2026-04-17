@@ -23,7 +23,10 @@ export interface ForestVariantBlueprint {
 }
 
 function getForestVariantCount(treeCount: number): number {
-  return Math.max(1, Math.min(treeCount, 12, Math.round(Math.sqrt(treeCount) * 1.1)))
+  return Math.max(
+    1,
+    Math.min(treeCount, 12, Math.round(Math.sqrt(treeCount) * 1.1))
+  )
 }
 
 function getForestVariantStrength(treeCount: number): number {

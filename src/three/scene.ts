@@ -3,6 +3,7 @@ import {
   type ForestInstance,
   type ForestSettings,
 } from '@/engine/forest'
+import { buildForestChunks, type ForestChunk } from '@/engine/chunks'
 import {
   buildForestVariantBlueprints,
   buildTreeBlueprint,
@@ -27,12 +28,15 @@ import {
   type WindSettings,
 } from './wind'
 import {
+  type ChunkPerformanceSummary,
+  type SceneDebugSnapshot,
   mergeScenePerformanceStats,
   summarizeGiantForestPerformance,
   summarizeSingleForestPerformance,
   type ScenePerformanceStats,
   type StaticScenePerformanceStats,
 } from './performance'
+import { normalizeDebugViewSettings, type DebugViewSettings } from './debug'
 
 export type ViewPreset = 'front' | 'quarter' | 'side' | 'top' | 'close'
 
@@ -48,6 +52,8 @@ export interface SceneContext {
     variationSeed: number
   ) => Promise<void>
   setViewPreset: (preset: ViewPreset) => void
+  setDebugView: (debugView: DebugViewSettings) => void
+  getDebugSnapshot: () => SceneDebugSnapshot
   dispose: () => void
 }
 
@@ -63,11 +69,20 @@ interface SceneFrame {
   forestMode: ForestSettings['mode']
 }
 
+interface ChunkDebugBounds {
+  id: string
+  box: THREE.Box3
+}
+
 function disposeGroupResources(group: THREE.Group) {
   const materials = new Set<THREE.Material>()
 
   group.traverse((obj) => {
-    if (obj instanceof THREE.Mesh || obj instanceof THREE.InstancedMesh) {
+    if (
+      obj instanceof THREE.Mesh ||
+      obj instanceof THREE.InstancedMesh ||
+      obj instanceof THREE.LineSegments
+    ) {
       const geometry = obj.geometry as THREE.BufferGeometry
       const material = obj.material as THREE.Material | Array<THREE.Material>
 
@@ -84,6 +99,87 @@ function disposeGroupResources(group: THREE.Group) {
 
   for (const material of materials) {
     material.dispose()
+  }
+}
+
+function setMaterialWireframe(material: THREE.Material, enabled: boolean) {
+  const materialWithWireframe = material as THREE.Material & {
+    wireframe?: boolean
+  }
+
+  if ('wireframe' in materialWithWireframe) {
+    materialWithWireframe.wireframe = enabled
+    material.needsUpdate = true
+  }
+}
+
+function createChunkDebugOverlay(
+  chunkBounds: Array<ChunkDebugBounds>
+): THREE.Group {
+  const overlay = new THREE.Group()
+  const palette = [
+    '#ff3b30',
+    '#ff9500',
+    '#ffd60a',
+    '#34c759',
+    '#00c7be',
+    '#32ade6',
+    '#0a84ff',
+    '#5e5ce6',
+    '#bf5af2',
+    '#ff2d55',
+  ]
+
+  for (let index = 0; index < chunkBounds.length; index += 1) {
+    const chunk = chunkBounds[index]
+    const color = new THREE.Color(palette[index % palette.length])
+    const size = chunk.box.getSize(new THREE.Vector3())
+    const center = chunk.box.getCenter(new THREE.Vector3())
+    const fill = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        Math.max(size.x - 0.2, size.x * 0.96),
+        Math.max(size.y - 0.2, size.y * 0.96),
+        Math.max(size.z - 0.2, size.z * 0.96)
+      ),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.07,
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      })
+    )
+    fill.position.copy(center)
+    fill.renderOrder = 40
+    overlay.add(fill)
+
+    const helper = new THREE.Box3Helper(chunk.box.clone(), color)
+    const material = helper.material as THREE.LineBasicMaterial
+
+    material.depthTest = false
+    material.depthWrite = false
+    material.transparent = true
+    material.opacity = 1
+    material.toneMapped = false
+    helper.renderOrder = 50
+    helper.userData.chunkId = chunk.id
+    overlay.add(helper)
+  }
+
+  return overlay
+}
+
+function finalizeInstancedBounds(mesh: THREE.InstancedMesh, expandBy = 0) {
+  mesh.computeBoundingBox()
+  mesh.computeBoundingSphere()
+
+  if (expandBy > 0) {
+    mesh.boundingBox?.expandByScalar(expandBy)
+    if (mesh.boundingSphere) {
+      mesh.boundingSphere.radius += expandBy
+    }
   }
 }
 
@@ -117,6 +213,17 @@ function createTreeMatrix(instance: ForestInstance): THREE.Matrix4 {
       instance.rotationY
     ),
     new THREE.Vector3(instance.scale, instance.scale, instance.scale)
+  )
+}
+
+function createChunkVariationSeed(
+  chunk: ForestChunk,
+  variationSeed: number
+): number {
+  return (
+    (Math.imul(chunk.gridX ^ variationSeed, 73856093) ^
+      Math.imul(chunk.gridZ ^ variationSeed, 19349663)) >>>
+      0 || 1
   )
 }
 
@@ -191,7 +298,7 @@ function applyViewPreset(
 
 function buildSharedForestGroup(
   variants: Array<ForestVariantBlueprint>,
-  barkMaterial: THREE.Material,
+  barkMaterial: THREE.Material
 ): { group: THREE.Group; leafMatrices: Array<THREE.Matrix4> } {
   const group = new THREE.Group()
   const leafMatrices: Array<THREE.Matrix4> = []
@@ -203,6 +310,7 @@ function buildSharedForestGroup(
       barkMaterial,
       variant.instances.length
     )
+    trunkMesh.userData.treeRole = 'wood'
     const treeMatrices = variant.instances.map((item) => createTreeMatrix(item))
 
     for (let i = 0; i < treeMatrices.length; i++) {
@@ -210,7 +318,7 @@ function buildSharedForestGroup(
     }
 
     trunkMesh.instanceMatrix.needsUpdate = true
-    trunkMesh.computeBoundingBox()
+    finalizeInstancedBounds(trunkMesh)
     group.add(trunkMesh)
 
     const baseLeafMatrices = buildLeafMatrices(
@@ -229,12 +337,45 @@ function buildSharedForestGroup(
   return { group, leafMatrices }
 }
 
+function buildChunkSummary(
+  chunk: ForestChunk,
+  variants: Array<ForestVariantBlueprint>,
+  leafInstanceCount: number
+): ChunkPerformanceSummary {
+  const treeCount = chunk.instances.length
+  const leafAnchorCount = variants.reduce(
+    (count, variant) =>
+      count + variant.blueprint.leaves.length * variant.instances.length,
+    0
+  )
+  const branchSegmentCount = variants.reduce(
+    (count, variant) =>
+      count + variant.blueprint.segments.length * variant.instances.length,
+    0
+  )
+
+  return {
+    id: chunk.id,
+    treeCount,
+    variantCount: variants.length,
+    woodDrawBatches: variants.length,
+    woodInstanceCount: treeCount,
+    leafAnchorCount,
+    leafInstanceCount,
+    branchSegmentCount,
+    cellSize: chunk.cellSize,
+    centerX: chunk.center.x,
+    centerZ: chunk.center.z,
+  }
+}
+
 export async function createScene(
   canvas: HTMLCanvasElement,
   initialConfig: SpeciesConfig,
   initialForest: ForestSettings,
   initialWind: WindSettings,
   initialVariationSeed: number,
+  initialDebugView: DebugViewSettings,
   onPerformanceStatsChange?: (stats: ScenePerformanceStats) => void
 ): Promise<SceneContext> {
   // Renderer
@@ -293,15 +434,75 @@ export async function createScene(
 
   // Tree group
   let treeGroup: THREE.Group | null = null
-  let leafWindRuntime: LeafWindRuntime | null = null
+  let debugOverlayGroup: THREE.Group | null = null
+  let leafWindRuntimes: Array<LeafWindRuntime> = []
   let rebuildVersion = 0
   let currentFrame: SceneFrame | null = null
   let staticPerformanceStats: StaticScenePerformanceStats | null = null
+  let currentDebugView = normalizeDebugViewSettings(initialDebugView)
+  let currentDebugSnapshot: SceneDebugSnapshot = {
+    performance: null,
+    chunks: [],
+    debugView: currentDebugView,
+  }
   let frameCountSinceReport = 0
   let lastPerformanceReportTime = performance.now()
 
+  function applyDebugView(nextDebugView: DebugViewSettings) {
+    currentDebugView = normalizeDebugViewSettings(nextDebugView)
+
+    if (treeGroup) {
+      treeGroup.traverse((obj) => {
+        if (obj.userData.treeRole === 'leaf') {
+          obj.visible = !currentDebugView.showWoodOnly
+        }
+
+        if (obj instanceof THREE.Mesh || obj instanceof THREE.InstancedMesh) {
+          const materials = (
+            Array.isArray(obj.material) ? obj.material : [obj.material]
+          ) as Array<THREE.Material>
+
+          for (const material of materials) {
+            setMaterialWireframe(material, currentDebugView.showWireframe)
+          }
+        }
+      })
+    }
+
+    if (debugOverlayGroup) {
+      debugOverlayGroup.visible = currentDebugView.showChunkBounds
+    }
+
+    currentDebugSnapshot = {
+      ...currentDebugSnapshot,
+      debugView: currentDebugView,
+    }
+    publishDebugSnapshot()
+  }
+
+  function publishDebugSnapshot() {
+    if (typeof window === 'undefined') return
+
+    window.__treeDebug = {
+      snapshot: currentDebugSnapshot,
+      getSnapshot: () => currentDebugSnapshot,
+      async copySnapshotJson() {
+        await navigator.clipboard.writeText(
+          JSON.stringify(currentDebugSnapshot, null, 2)
+        )
+      },
+      setDebugView(settings) {
+        applyDebugView({ ...currentDebugView, ...settings })
+      },
+      setViewPreset(preset) {
+        if (!currentFrame) return
+        applyViewPreset(camera, controls, currentFrame, preset)
+      },
+    }
+  }
+
   function reportPerformanceStats(force = false) {
-    if (!onPerformanceStatsChange || !staticPerformanceStats) return
+    if (!staticPerformanceStats) return
 
     frameCountSinceReport += 1
     const now = performance.now()
@@ -315,16 +516,21 @@ export async function createScene(
     frameCountSinceReport = 0
     lastPerformanceReportTime = now
 
-    onPerformanceStatsChange(
-      mergeScenePerformanceStats(staticPerformanceStats, {
-        drawCalls: renderer.info.render.drawCalls,
-        computeCalls: renderer.info.compute.frameCalls,
-        triangles: renderer.info.render.triangles,
-        geometries: renderer.info.memory.geometries,
-        textures: renderer.info.memory.textures,
-        fps: Number(fps.toFixed(1)),
-      })
-    )
+    const nextStats = mergeScenePerformanceStats(staticPerformanceStats, {
+      drawCalls: renderer.info.render.drawCalls,
+      computeCalls: renderer.info.compute.frameCalls,
+      triangles: renderer.info.render.triangles,
+      geometries: renderer.info.memory.geometries,
+      textures: renderer.info.memory.textures,
+      fps: Number(fps.toFixed(1)),
+    })
+
+    currentDebugSnapshot = {
+      ...currentDebugSnapshot,
+      performance: nextStats,
+    }
+    publishDebugSnapshot()
+    onPerformanceStatsChange?.(nextStats)
   }
 
   async function rebuildScene(
@@ -347,12 +553,19 @@ export async function createScene(
       treeGroup = null
     }
 
-    if (leafWindRuntime) {
-      leafWindRuntime.dispose()
-      leafWindRuntime = null
+    if (debugOverlayGroup) {
+      scene.remove(debugOverlayGroup)
+      disposeGroupResources(debugOverlayGroup)
+      debugOverlayGroup = null
     }
 
+    for (const runtime of leafWindRuntimes) {
+      runtime.dispose()
+    }
+    leafWindRuntimes = []
+
     const group = new THREE.Group()
+    const nextLeafWindRuntimes: Array<LeafWindRuntime> = []
     const [barkTextures, leafTex] = await Promise.all([
       getBarkTextures(config.barkTexture),
       getLeafTexture(config.leafTexture, config.leafTextureType),
@@ -364,24 +577,85 @@ export async function createScene(
       radius: forest.radius,
       seed: variationSeed,
     })
-    let leafMatrices: Array<THREE.Matrix4> = []
+    const chunkPlan = buildForestChunks(layout, forest)
+    const nextChunkBounds: Array<ChunkDebugBounds> = []
     let nextStaticPerformanceStats: StaticScenePerformanceStats
+    let nextDebugChunks: Array<ChunkPerformanceSummary> = []
 
     if (forest.mode === 'giant') {
-      const variants = buildForestVariantBlueprints(config, layout, variationSeed)
-      const sharedForest = buildSharedForestGroup(variants, barkMat)
-      group.add(sharedForest.group)
-      leafMatrices = sharedForest.leafMatrices
+      const allVariants: Array<ForestVariantBlueprint> = []
+
+      for (const chunk of chunkPlan.chunks) {
+        const chunkSeed = createChunkVariationSeed(chunk, variationSeed)
+        const variants = buildForestVariantBlueprints(
+          config,
+          chunk.instances,
+          chunkSeed
+        )
+        const chunkGroup = new THREE.Group()
+        const sharedForest = buildSharedForestGroup(variants, barkMat)
+        chunkGroup.add(sharedForest.group)
+
+        const chunkLeafRuntime = createLeafWindRuntime(
+          sharedForest.leafMatrices,
+          wind
+        )
+        if (chunkLeafRuntime && sharedForest.leafMatrices.length > 0) {
+          const leafMat = createLeafMaterial(
+            leafTex,
+            chunkLeafRuntime.renderOffsetBuffer
+          )
+          const leafGeo = createLeafGeometry(
+            config.leafSize,
+            config.leafTextureType
+          )
+          const leafMesh = buildLeafMeshFromMatrices(
+            leafGeo,
+            sharedForest.leafMatrices,
+            leafMat
+          )
+          leafMesh.userData.treeRole = 'leaf'
+          leafMesh.frustumCulled = true
+          finalizeInstancedBounds(
+            leafMesh,
+            config.leafSize * (wind.strength + 0.5)
+          )
+          chunkGroup.add(leafMesh)
+          nextLeafWindRuntimes.push(chunkLeafRuntime)
+        } else {
+          chunkLeafRuntime?.dispose()
+        }
+
+        chunkGroup.updateMatrixWorld(true)
+        nextChunkBounds.push({
+          id: chunk.id,
+          box: new THREE.Box3().setFromObject(chunkGroup),
+        })
+
+        allVariants.push(...variants)
+        nextDebugChunks.push(
+          buildChunkSummary(chunk, variants, sharedForest.leafMatrices.length)
+        )
+        group.add(chunkGroup)
+      }
+
+      const rebuildMs = performance.now() - rebuildStart
       nextStaticPerformanceStats = summarizeGiantForestPerformance({
         forestMode: forest.mode,
         layout,
-        variants,
-        leafInstanceCount: leafMatrices.length,
-        rebuildMs: performance.now() - rebuildStart,
+        variants: allVariants,
+        chunks: nextDebugChunks,
+        leafInstanceCount: nextDebugChunks.reduce(
+          (count, chunk) => count + chunk.leafInstanceCount,
+          0
+        ),
+        rebuildMs,
+        chunkCellSize: chunkPlan.cellSize,
       })
     } else {
       const lstring = generateLString(config)
       const blueprints: Array<TreeBlueprint> = []
+      const leafMatrices: Array<THREE.Matrix4> = []
 
       for (const item of layout) {
         const blueprint = buildTreeBlueprint(config, item.seed, lstring)
@@ -392,7 +666,9 @@ export async function createScene(
         tree.scale.setScalar(item.scale)
 
         const trunkGeo = buildTrunkGeometry(blueprint.segments)
-        tree.add(new THREE.Mesh(trunkGeo, barkMat))
+        const trunkMesh = new THREE.Mesh(trunkGeo, barkMat)
+        trunkMesh.userData.treeRole = 'wood'
+        tree.add(trunkMesh)
 
         group.add(tree)
 
@@ -410,47 +686,100 @@ export async function createScene(
         }
       }
 
+      const nextLeafWindRuntime = createLeafWindRuntime(leafMatrices, wind)
+
+      if (nextLeafWindRuntime && leafMatrices.length > 0) {
+        const leafMat = createLeafMaterial(
+          leafTex,
+          nextLeafWindRuntime.renderOffsetBuffer
+        )
+        const leafGeo = createLeafGeometry(
+          config.leafSize,
+          config.leafTextureType
+        )
+        const leafMesh = buildLeafMeshFromMatrices(
+          leafGeo,
+          leafMatrices,
+          leafMat
+        )
+        leafMesh.userData.treeRole = 'leaf'
+        leafMesh.frustumCulled = false
+        finalizeInstancedBounds(
+          leafMesh,
+          config.leafSize * (wind.strength + 0.5)
+        )
+        group.add(leafMesh)
+        nextLeafWindRuntimes.push(nextLeafWindRuntime)
+      } else {
+        nextLeafWindRuntime?.dispose()
+      }
+
+      const rebuildMs = performance.now() - rebuildStart
+      group.updateMatrixWorld(true)
+      nextChunkBounds.push({
+        id: '0:0',
+        box: new THREE.Box3().setFromObject(group),
+      })
+      nextDebugChunks = [
+        {
+          id: '0:0',
+          treeCount: layout.length,
+          variantCount: blueprints.length,
+          woodDrawBatches: blueprints.length,
+          woodInstanceCount: layout.length,
+          leafAnchorCount: blueprints.reduce(
+            (count, blueprint) => count + blueprint.leaves.length,
+            0
+          ),
+          leafInstanceCount: leafMatrices.length,
+          branchSegmentCount: blueprints.reduce(
+            (count, blueprint) => count + blueprint.segments.length,
+            0
+          ),
+          cellSize: chunkPlan.cellSize,
+          centerX: 0,
+          centerZ: 0,
+        },
+      ]
+
       nextStaticPerformanceStats = summarizeSingleForestPerformance({
         forestMode: forest.mode,
         layout,
         blueprints,
         leafInstanceCount: leafMatrices.length,
-        rebuildMs: performance.now() - rebuildStart,
+        rebuildMs,
+        chunkCellSize: chunkPlan.cellSize,
       })
-    }
-
-    const nextLeafWindRuntime = createLeafWindRuntime(leafMatrices, wind)
-
-    if (nextLeafWindRuntime && leafMatrices.length > 0) {
-      const leafMat = createLeafMaterial(
-        leafTex,
-        nextLeafWindRuntime.renderOffsetBuffer
-      )
-      const leafGeo = createLeafGeometry(
-        config.leafSize,
-        config.leafTextureType
-      )
-      const leafMesh = buildLeafMeshFromMatrices(leafGeo, leafMatrices, leafMat)
-      leafMesh.frustumCulled = false
-      leafMesh.computeBoundingBox()
-      group.add(leafMesh)
     }
 
     group.updateMatrixWorld(true)
     const box = new THREE.Box3().setFromObject(group)
     const nextFrame = createSceneFrame(box, forest.mode)
+    const nextDebugOverlayGroup = createChunkDebugOverlay(nextChunkBounds)
 
     if (version !== rebuildVersion) {
-      nextLeafWindRuntime?.dispose()
+      for (const runtime of nextLeafWindRuntimes) {
+        runtime.dispose()
+      }
       disposeGroupResources(group)
+      disposeGroupResources(nextDebugOverlayGroup)
       return
     }
 
-    leafWindRuntime = nextLeafWindRuntime
+    leafWindRuntimes = nextLeafWindRuntimes
     treeGroup = group
+    debugOverlayGroup = nextDebugOverlayGroup
     currentFrame = nextFrame
     staticPerformanceStats = nextStaticPerformanceStats
+    currentDebugSnapshot = {
+      performance: currentDebugSnapshot.performance,
+      chunks: nextDebugChunks,
+      debugView: currentDebugView,
+    }
+    publishDebugSnapshot()
     scene.add(treeGroup)
+    scene.add(debugOverlayGroup)
+    applyDebugView(currentDebugView)
 
     if (previousFrame && targetOffset) {
       const nextTarget = nextFrame.center.clone().add(targetOffset)
@@ -504,10 +833,10 @@ export async function createScene(
 
   // Animation loop
   void renderer.setAnimationLoop(() => {
-    if (leafWindRuntime) {
+    for (const runtime of leafWindRuntimes) {
       // Three TSL compute nodes are weakly typed, but this is the supported path.
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      void renderer.compute(leafWindRuntime.computeNode)
+      void renderer.compute(runtime.computeNode)
     }
     controls.update()
     renderer.render(scene, camera)
@@ -517,15 +846,26 @@ export async function createScene(
   function dispose() {
     resizeObserver.disconnect()
     void renderer.setAnimationLoop(null)
-    if (leafWindRuntime) {
-      leafWindRuntime.dispose()
-      leafWindRuntime = null
+    for (const runtime of leafWindRuntimes) {
+      runtime.dispose()
     }
+    leafWindRuntimes = []
     if (treeGroup) {
       scene.remove(treeGroup)
       disposeGroupResources(treeGroup)
       treeGroup = null
     }
+    if (debugOverlayGroup) {
+      scene.remove(debugOverlayGroup)
+      disposeGroupResources(debugOverlayGroup)
+      debugOverlayGroup = null
+    }
+    currentDebugSnapshot = {
+      performance: null,
+      chunks: [],
+      debugView: currentDebugView,
+    }
+    publishDebugSnapshot()
     renderer.dispose()
   }
 
@@ -538,6 +878,12 @@ export async function createScene(
     setViewPreset(preset) {
       if (!currentFrame) return
       applyViewPreset(camera, controls, currentFrame, preset)
+    },
+    setDebugView(debugView) {
+      applyDebugView(debugView)
+    },
+    getDebugSnapshot() {
+      return currentDebugSnapshot
     },
     dispose,
   }
