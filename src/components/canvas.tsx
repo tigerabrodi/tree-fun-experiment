@@ -3,6 +3,7 @@ import type { ForestSettings } from '@/engine/forest'
 import { createScene, type SceneContext } from '@/three/scene'
 import type { SpeciesConfig } from '@/engine/species'
 import type { WindSettings } from '@/three/wind'
+import type { ScenePerformanceStats } from '@/three/performance'
 
 interface CanvasProps {
   config: SpeciesConfig
@@ -10,6 +11,7 @@ interface CanvasProps {
   wind: WindSettings
   variationSeed: number
   sceneRef: React.RefObject<SceneContext | null>
+  onPerformanceStatsChange?: (stats: ScenePerformanceStats) => void
 }
 
 export function TreeCanvas({
@@ -18,6 +20,7 @@ export function TreeCanvas({
   wind,
   variationSeed,
   sceneRef,
+  onPerformanceStatsChange,
 }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -28,7 +31,14 @@ export function TreeCanvas({
     let isStale = false
     let ctx: SceneContext | null = null
 
-    void createScene(canvas, config, forest, wind, variationSeed).then(
+    void createScene(
+      canvas,
+      config,
+      forest,
+      wind,
+      variationSeed,
+      onPerformanceStatsChange
+    ).then(
       (scene) => {
         if (isStale) {
           scene.dispose()

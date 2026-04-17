@@ -6,11 +6,13 @@ import {
 import { ALL_SPECIES, type SpeciesConfig } from '@/engine/species'
 import type { ViewPreset } from '@/three/scene'
 import { type WindSettings } from '@/three/wind'
+import type { ScenePerformanceStats } from '@/three/performance'
 
 interface PanelProps {
   config: SpeciesConfig
   forest: ForestSettings
   wind: WindSettings
+  performanceStats: ScenePerformanceStats | null
   onChange: (config: SpeciesConfig) => void
   onForestChange: (forest: ForestSettings) => void
   onWindChange: (wind: WindSettings) => void
@@ -60,6 +62,7 @@ export function Panel({
   config,
   forest,
   wind,
+  performanceStats,
   onChange,
   onForestChange,
   onWindChange,
@@ -80,6 +83,14 @@ export function Panel({
 
   function updateWind(partial: Partial<WindSettings>) {
     onWindChange({ ...wind, ...partial })
+  }
+
+  function formatInt(value: number) {
+    return new Intl.NumberFormat('en-US').format(Math.round(value))
+  }
+
+  function formatDecimal(value: number) {
+    return value.toFixed(1)
   }
 
   return (
@@ -259,6 +270,94 @@ export function Panel({
           step={1}
           onChange={(v) => updateWind({ direction: v })}
         />
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] tracking-[0.12em] text-[var(--color-text-dim)] uppercase">
+          Performance
+        </div>
+        {performanceStats ? (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px] text-[var(--color-text-dim)]">
+            <span>FPS</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatDecimal(performanceStats.fps)}
+            </span>
+
+            <span>Draw Calls</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.drawCalls)}
+            </span>
+
+            <span>Compute Passes</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.computeCalls)}
+            </span>
+
+            <span>Triangles</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.triangles)}
+            </span>
+
+            <span>Rebuild ms</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatDecimal(performanceStats.rebuildMs)}
+            </span>
+
+            <span>Trees</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.treeCount)}
+            </span>
+
+            <span>Base Variants</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.uniqueBlueprintCount)}
+            </span>
+
+            <span>Wood Batches</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.woodDrawBatches)}
+            </span>
+
+            <span>Wood Instances</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.woodInstanceCount)}
+            </span>
+
+            <span>Leaf Batches</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.leafDrawBatches)}
+            </span>
+
+            <span>Leaf Anchors</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.leafAnchorCount)}
+            </span>
+
+            <span>Leaf Instances</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.leafInstanceCount)}
+            </span>
+
+            <span>Branch Segments</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.branchSegmentCount)}
+            </span>
+
+            <span>Geometries</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.geometries)}
+            </span>
+
+            <span>Textures</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.textures)}
+            </span>
+          </div>
+        ) : (
+          <div className="text-[13px] text-[var(--color-text-dim)]">
+            Waiting for first frame.
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-5">

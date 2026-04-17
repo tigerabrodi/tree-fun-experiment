@@ -7,6 +7,7 @@ import {
   buildForestVariantBlueprints,
   buildTreeBlueprint,
   type ForestVariantBlueprint,
+  type TreeBlueprint,
 } from '@/engine/blueprint'
 import * as THREE from 'three/webgpu'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
@@ -25,6 +26,13 @@ import {
   type LeafWindRuntime,
   type WindSettings,
 } from './wind'
+import {
+  mergeScenePerformanceStats,
+  summarizeGiantForestPerformance,
+  summarizeSingleForestPerformance,
+  type ScenePerformanceStats,
+  type StaticScenePerformanceStats,
+} from './performance'
 
 export type ViewPreset = 'front' | 'quarter' | 'side' | 'top' | 'close'
 
@@ -226,7 +234,8 @@ export async function createScene(
   initialConfig: SpeciesConfig,
   initialForest: ForestSettings,
   initialWind: WindSettings,
-  initialVariationSeed: number
+  initialVariationSeed: number,
+  onPerformanceStatsChange?: (stats: ScenePerformanceStats) => void
 ): Promise<SceneContext> {
   // Renderer
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true })
@@ -287,6 +296,36 @@ export async function createScene(
   let leafWindRuntime: LeafWindRuntime | null = null
   let rebuildVersion = 0
   let currentFrame: SceneFrame | null = null
+  let staticPerformanceStats: StaticScenePerformanceStats | null = null
+  let frameCountSinceReport = 0
+  let lastPerformanceReportTime = performance.now()
+
+  function reportPerformanceStats(force = false) {
+    if (!onPerformanceStatsChange || !staticPerformanceStats) return
+
+    frameCountSinceReport += 1
+    const now = performance.now()
+    const elapsed = now - lastPerformanceReportTime
+
+    if (!force && elapsed < 250) {
+      return
+    }
+
+    const fps = elapsed > 0 ? (frameCountSinceReport * 1000) / elapsed : 0
+    frameCountSinceReport = 0
+    lastPerformanceReportTime = now
+
+    onPerformanceStatsChange(
+      mergeScenePerformanceStats(staticPerformanceStats, {
+        drawCalls: renderer.info.render.drawCalls,
+        computeCalls: renderer.info.compute.frameCalls,
+        triangles: renderer.info.render.triangles,
+        geometries: renderer.info.memory.geometries,
+        textures: renderer.info.memory.textures,
+        fps: Number(fps.toFixed(1)),
+      })
+    )
+  }
 
   async function rebuildScene(
     config: SpeciesConfig,
@@ -294,6 +333,7 @@ export async function createScene(
     wind: WindSettings,
     variationSeed: number
   ) {
+    const rebuildStart = performance.now()
     const version = ++rebuildVersion
     const previousFrame = currentFrame ? cloneSceneFrame(currentFrame) : null
     const cameraOffset = camera.position.clone().sub(controls.target)
@@ -325,20 +365,27 @@ export async function createScene(
       seed: variationSeed,
     })
     let leafMatrices: Array<THREE.Matrix4> = []
+    let nextStaticPerformanceStats: StaticScenePerformanceStats
 
     if (forest.mode === 'giant') {
       const variants = buildForestVariantBlueprints(config, layout, variationSeed)
-      const sharedForest = buildSharedForestGroup(
-        variants,
-        barkMat,
-      )
+      const sharedForest = buildSharedForestGroup(variants, barkMat)
       group.add(sharedForest.group)
       leafMatrices = sharedForest.leafMatrices
+      nextStaticPerformanceStats = summarizeGiantForestPerformance({
+        forestMode: forest.mode,
+        layout,
+        variants,
+        leafInstanceCount: leafMatrices.length,
+        rebuildMs: performance.now() - rebuildStart,
+      })
     } else {
       const lstring = generateLString(config)
+      const blueprints: Array<TreeBlueprint> = []
 
       for (const item of layout) {
         const blueprint = buildTreeBlueprint(config, item.seed, lstring)
+        blueprints.push(blueprint)
         const tree = new THREE.Group()
         tree.position.set(item.position.x, item.position.y, item.position.z)
         tree.rotation.y = item.rotationY
@@ -362,6 +409,14 @@ export async function createScene(
           }
         }
       }
+
+      nextStaticPerformanceStats = summarizeSingleForestPerformance({
+        forestMode: forest.mode,
+        layout,
+        blueprints,
+        leafInstanceCount: leafMatrices.length,
+        rebuildMs: performance.now() - rebuildStart,
+      })
     }
 
     const nextLeafWindRuntime = createLeafWindRuntime(leafMatrices, wind)
@@ -394,6 +449,7 @@ export async function createScene(
     leafWindRuntime = nextLeafWindRuntime
     treeGroup = group
     currentFrame = nextFrame
+    staticPerformanceStats = nextStaticPerformanceStats
     scene.add(treeGroup)
 
     if (previousFrame && targetOffset) {
@@ -404,6 +460,8 @@ export async function createScene(
     } else {
       applyViewPreset(camera, controls, nextFrame, 'quarter')
     }
+
+    reportPerformanceStats(true)
   }
 
   // Build initial tree
@@ -453,6 +511,7 @@ export async function createScene(
     }
     controls.update()
     renderer.render(scene, camera)
+    reportPerformanceStats()
   })
 
   function dispose() {

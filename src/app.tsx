@@ -5,6 +5,7 @@ import { SINGLE_TREE_FOREST, type ForestSettings } from '@/engine/forest'
 import { OAK, type SpeciesConfig } from '@/engine/species'
 import type { SceneContext, ViewPreset } from '@/three/scene'
 import { DEFAULT_WIND_SETTINGS, type WindSettings } from '@/three/wind'
+import type { ScenePerformanceStats } from '@/three/performance'
 
 function createVariationSeed(): number {
   return Math.floor(Math.random() * 2147483646) + 1
@@ -15,6 +16,8 @@ export function App() {
   const [forest, setForest] = useState<ForestSettings>(SINGLE_TREE_FOREST)
   const [wind, setWind] = useState<WindSettings>(DEFAULT_WIND_SETTINGS)
   const [variationSeed, setVariationSeed] = useState(createVariationSeed)
+  const [performanceStats, setPerformanceStats] =
+    useState<ScenePerformanceStats | null>(null)
   const sceneRef = useRef<SceneContext | null>(null)
 
   const rebuildScene = useCallback(
@@ -74,6 +77,7 @@ export function App() {
         config={config}
         forest={forest}
         wind={wind}
+        performanceStats={performanceStats}
         onChange={handleChange}
         onForestChange={handleForestChange}
         onWindChange={handleWindChange}
@@ -86,6 +90,7 @@ export function App() {
         wind={wind}
         variationSeed={variationSeed}
         sceneRef={sceneRef}
+        onPerformanceStatsChange={setPerformanceStats}
       />
     </div>
   )
