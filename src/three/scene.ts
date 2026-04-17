@@ -1,6 +1,5 @@
 import {
   buildForestLayout,
-  type ForestInstance,
   type ForestSettings,
 } from '@/engine/forest'
 import { buildForestChunks, type ForestChunk } from '@/engine/chunks'
@@ -10,6 +9,10 @@ import {
   type ForestVariantBlueprint,
   type TreeBlueprint,
 } from '@/engine/blueprint'
+import {
+  TREE_LOD_LEVELS,
+  type TreeLodLevel,
+} from '@/engine/lod'
 import * as THREE from 'three/webgpu'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { initKTX2Loader, loadBarkTextures, loadLeafTexture } from './textures'
@@ -21,6 +24,14 @@ import {
   createLeafGeometry,
 } from './tree-mesh'
 import { createChunkDebugOverlay, type ChunkDebugBounds } from './debug-overlay'
+import {
+  buildChunkLodRenderState,
+  buildChunkLodVariants,
+  buildChunkSummary,
+  createTreeMatrix,
+  finalizeInstancedBounds,
+  type ChunkLodRenderState,
+} from './forest-render'
 import { generateLString } from '@/engine/lsystem'
 import { type SpeciesConfig } from '@/engine/species'
 import {
@@ -29,6 +40,7 @@ import {
   type WindSettings,
 } from './wind'
 import { applyChunkFrustumCulling } from './culling'
+import { applyChunkLod } from './lod'
 import {
   type ChunkPerformanceSummary,
   type SceneDebugSnapshot,
@@ -75,7 +87,9 @@ interface ChunkRenderState {
   id: string
   group: THREE.Group
   bounds: THREE.Box3
-  leafWindRuntime: LeafWindRuntime | null
+  cellSize: number
+  lodLevel: TreeLodLevel
+  lodStates: Partial<Record<TreeLodLevel, ChunkLodRenderState>>
   visible: boolean
 }
 
@@ -118,18 +132,6 @@ function setMaterialWireframe(material: THREE.Material, enabled: boolean) {
   }
 }
 
-function finalizeInstancedBounds(mesh: THREE.InstancedMesh, expandBy = 0) {
-  mesh.computeBoundingBox()
-  mesh.computeBoundingSphere()
-
-  if (expandBy > 0) {
-    mesh.boundingBox?.expandByScalar(expandBy)
-    if (mesh.boundingSphere) {
-      mesh.boundingSphere.radius += expandBy
-    }
-  }
-}
-
 async function getBarkTextures(species: string) {
   if (!barkCache.has(species)) {
     barkCache.set(species, await loadBarkTextures(species))
@@ -146,21 +148,6 @@ async function getLeafTexture(
     leafCache.set(key, await loadLeafTexture(species, type))
   }
   return leafCache.get(key)!
-}
-
-function createTreeMatrix(instance: ForestInstance): THREE.Matrix4 {
-  return new THREE.Matrix4().compose(
-    new THREE.Vector3(
-      instance.position.x,
-      instance.position.y,
-      instance.position.z
-    ),
-    new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      instance.rotationY
-    ),
-    new THREE.Vector3(instance.scale, instance.scale, instance.scale)
-  )
 }
 
 function createChunkVariationSeed(
@@ -243,78 +230,6 @@ function applyViewPreset(
   controls.update()
 }
 
-function buildSharedForestGroup(
-  variants: Array<ForestVariantBlueprint>,
-  barkMaterial: THREE.Material
-): { group: THREE.Group; leafMatrices: Array<THREE.Matrix4> } {
-  const group = new THREE.Group()
-  const leafMatrices: Array<THREE.Matrix4> = []
-
-  for (const variant of variants) {
-    const trunkGeometry = buildTrunkGeometry(variant.blueprint.segments)
-    const trunkMesh = new THREE.InstancedMesh(
-      trunkGeometry,
-      barkMaterial,
-      variant.instances.length
-    )
-    trunkMesh.userData.treeRole = 'wood'
-    const treeMatrices = variant.instances.map((item) => createTreeMatrix(item))
-
-    for (let i = 0; i < treeMatrices.length; i++) {
-      trunkMesh.setMatrixAt(i, treeMatrices[i])
-    }
-
-    trunkMesh.instanceMatrix.needsUpdate = true
-    finalizeInstancedBounds(trunkMesh)
-    group.add(trunkMesh)
-
-    const baseLeafMatrices = buildLeafMatrices(
-      variant.blueprint.leaves,
-      variant.seed,
-      variant.config
-    )
-
-    for (const treeMatrix of treeMatrices) {
-      for (const baseLeafMatrix of baseLeafMatrices) {
-        leafMatrices.push(treeMatrix.clone().multiply(baseLeafMatrix))
-      }
-    }
-  }
-
-  return { group, leafMatrices }
-}
-
-function buildChunkSummary(
-  chunk: ForestChunk,
-  variants: Array<ForestVariantBlueprint>,
-  leafInstanceCount: number
-): ChunkPerformanceSummary {
-  const treeCount = chunk.instances.length
-  const leafAnchorCount = variants.reduce(
-    (count, variant) =>
-      count + variant.blueprint.leaves.length * variant.instances.length,
-    0
-  )
-  const branchSegmentCount = variants.reduce(
-    (count, variant) =>
-      count + variant.blueprint.segments.length * variant.instances.length,
-    0
-  )
-
-  return {
-    id: chunk.id,
-    treeCount,
-    variantCount: variants.length,
-    woodDrawBatches: variants.length,
-    woodInstanceCount: treeCount,
-    leafAnchorCount,
-    leafInstanceCount,
-    branchSegmentCount,
-    cellSize: chunk.cellSize,
-    centerX: chunk.center.x,
-    centerZ: chunk.center.z,
-  }
-}
 
 export async function createScene(
   canvas: HTMLCanvasElement,
@@ -391,6 +306,11 @@ export async function createScene(
     visibleChunkCount: 0,
     culledChunkCount: 0,
   }
+  let currentChunkLod = {
+    nearChunkCount: 0,
+    midChunkCount: 0,
+    farChunkCount: 0,
+  }
   let currentDebugView = normalizeDebugViewSettings(initialDebugView)
   let currentDebugSnapshot: SceneDebugSnapshot = {
     performance: null,
@@ -400,23 +320,62 @@ export async function createScene(
   let frameCountSinceReport = 0
   let lastPerformanceReportTime = performance.now()
 
-  function updateChunkCulling() {
+  function updateChunkVisibilityAndLod() {
     if (chunkRenderStates.length === 0) {
       currentChunkCulling = {
         visibleChunkCount: 0,
         culledChunkCount: 0,
       }
-      return currentChunkCulling
+      currentChunkLod = {
+        nearChunkCount: 0,
+        midChunkCount: 0,
+        farChunkCount: 0,
+      }
+      return
     }
 
-    const summary = applyChunkFrustumCulling(camera, chunkRenderStates)
+    currentChunkCulling = applyChunkFrustumCulling(camera, chunkRenderStates)
+    applyChunkLod(camera, chunkRenderStates)
+    currentChunkLod = {
+      nearChunkCount: 0,
+      midChunkCount: 0,
+      farChunkCount: 0,
+    }
 
     for (const chunk of chunkRenderStates) {
-      chunk.group.visible = chunk.visible
-    }
+      const effectiveLodLevel =
+        chunk.lodStates[chunk.lodLevel] !== undefined
+          ? chunk.lodLevel
+          : TREE_LOD_LEVELS.find((level) => chunk.lodStates[level] !== undefined) ??
+            'near'
 
-    currentChunkCulling = summary
-    return summary
+      chunk.lodLevel = effectiveLodLevel
+      chunk.group.visible = chunk.visible
+
+      for (const level of TREE_LOD_LEVELS) {
+        const lodState = chunk.lodStates[level]
+        if (!lodState) continue
+
+        const isActive = chunk.visible && chunk.lodLevel === level
+        lodState.group.visible = isActive
+      }
+
+      if (!chunk.visible) {
+        continue
+      }
+
+      switch (chunk.lodLevel) {
+        case 'near':
+          currentChunkLod.nearChunkCount += 1
+          break
+        case 'mid':
+          currentChunkLod.midChunkCount += 1
+          break
+        case 'far':
+          currentChunkLod.farChunkCount += 1
+          break
+      }
+    }
   }
 
   function applyDebugView(nextDebugView: DebugViewSettings) {
@@ -496,6 +455,9 @@ export async function createScene(
       fps: Number(fps.toFixed(1)),
       visibleChunkCount: currentChunkCulling.visibleChunkCount,
       culledChunkCount: currentChunkCulling.culledChunkCount,
+      nearLodChunkCount: currentChunkLod.nearChunkCount,
+      midLodChunkCount: currentChunkLod.midChunkCount,
+      farLodChunkCount: currentChunkLod.farChunkCount,
     })
 
     currentDebugSnapshot = {
@@ -541,13 +503,19 @@ export async function createScene(
       visibleChunkCount: 0,
       culledChunkCount: 0,
     }
+    currentChunkLod = {
+      nearChunkCount: 0,
+      midChunkCount: 0,
+      farChunkCount: 0,
+    }
 
     const group = new THREE.Group()
     const nextLeafWindRuntimes: Array<LeafWindRuntime> = []
     const nextChunkRenderStates: Array<ChunkRenderState> = []
-    const [barkTextures, leafTex] = await Promise.all([
+    const [barkTextures, clusterLeafTex, singleLeafTex] = await Promise.all([
       getBarkTextures(config.barkTexture),
-      getLeafTexture(config.leafTexture, config.leafTextureType),
+      getLeafTexture(config.leafTexture, 'cluster'),
+      getLeafTexture(config.leafTexture, 'single'),
     ])
     const barkMat = createBarkMaterial(barkTextures, wind)
     const layout = buildForestLayout({
@@ -572,37 +540,30 @@ export async function createScene(
           chunkSeed
         )
         const chunkGroup = new THREE.Group()
-        const sharedForest = buildSharedForestGroup(variants, barkMat)
-        chunkGroup.add(sharedForest.group)
+        const lodStates: Partial<Record<TreeLodLevel, ChunkLodRenderState>> = {}
+        const nearVariants = buildChunkLodVariants(variants, 'near')
 
-        const chunkLeafRuntime = createLeafWindRuntime(
-          sharedForest.leafMatrices,
-          wind
-        )
-        if (chunkLeafRuntime && sharedForest.leafMatrices.length > 0) {
-          const leafMat = createLeafMaterial(
-            leafTex,
-            chunkLeafRuntime.renderOffsetBuffer
+        for (const level of TREE_LOD_LEVELS) {
+          const renderVariants =
+            level === 'near' ? nearVariants : buildChunkLodVariants(variants, level)
+          const leafTexture =
+            renderVariants[0].renderConfig.leafTextureType === 'single'
+              ? singleLeafTex
+              : clusterLeafTex
+          const lodState = buildChunkLodRenderState(
+            renderVariants,
+            barkMat,
+            leafTexture,
+            wind
           )
-          const leafGeo = createLeafGeometry(
-            config.leafSize,
-            config.leafTextureType
-          )
-          const leafMesh = buildLeafMeshFromMatrices(
-            leafGeo,
-            sharedForest.leafMatrices,
-            leafMat
-          )
-          leafMesh.userData.treeRole = 'leaf'
-          leafMesh.frustumCulled = true
-          finalizeInstancedBounds(
-            leafMesh,
-            config.leafSize * (wind.strength + 0.5)
-          )
-          chunkGroup.add(leafMesh)
-          nextLeafWindRuntimes.push(chunkLeafRuntime)
-        } else {
-          chunkLeafRuntime?.dispose()
+
+          lodState.group.visible = level === 'near'
+          lodStates[level] = lodState
+          chunkGroup.add(lodState.group)
+
+          if (lodState.leafWindRuntime) {
+            nextLeafWindRuntimes.push(lodState.leafWindRuntime)
+          }
         }
 
         chunkGroup.updateMatrixWorld(true)
@@ -615,13 +576,19 @@ export async function createScene(
           id: chunk.id,
           group: chunkGroup,
           bounds: chunkBounds,
-          leafWindRuntime: chunkLeafRuntime ?? null,
+          cellSize: chunk.cellSize,
+          lodLevel: 'near',
+          lodStates,
           visible: true,
         })
 
         allVariants.push(...variants)
         nextDebugChunks.push(
-          buildChunkSummary(chunk, variants, sharedForest.leafMatrices.length)
+          buildChunkSummary(
+            chunk,
+            variants,
+            lodStates.near?.leafInstanceCount ?? 0
+          )
         )
         group.add(chunkGroup)
       }
@@ -677,7 +644,7 @@ export async function createScene(
 
       if (nextLeafWindRuntime && leafMatrices.length > 0) {
         const leafMat = createLeafMaterial(
-          leafTex,
+          clusterLeafTex,
           nextLeafWindRuntime.renderOffsetBuffer
         )
         const leafGeo = createLeafGeometry(
@@ -712,7 +679,15 @@ export async function createScene(
         id: '0:0',
         group,
         bounds: chunkBounds,
-        leafWindRuntime: nextLeafWindRuntime ?? null,
+        cellSize: chunkPlan.cellSize,
+        lodLevel: 'near',
+        lodStates: {
+          near: {
+            group,
+            leafWindRuntime: nextLeafWindRuntime ?? null,
+            leafInstanceCount: leafMatrices.length,
+          },
+        },
         visible: true,
       })
       nextDebugChunks = [
@@ -776,7 +751,7 @@ export async function createScene(
     scene.add(treeGroup)
     scene.add(debugOverlayGroup)
     applyDebugView(currentDebugView)
-    updateChunkCulling()
+    updateChunkVisibilityAndLod()
 
     if (previousFrame && targetOffset) {
       const nextTarget = nextFrame.center.clone().add(targetOffset)
@@ -831,16 +806,18 @@ export async function createScene(
   // Animation loop
   void renderer.setAnimationLoop(() => {
     controls.update()
-    updateChunkCulling()
+    updateChunkVisibilityAndLod()
 
     for (const chunk of chunkRenderStates) {
-      if (!chunk.visible || !chunk.leafWindRuntime) {
+      const activeLodState = chunk.lodStates[chunk.lodLevel]
+
+      if (!chunk.visible || !activeLodState?.leafWindRuntime) {
         continue
       }
 
       // Three TSL compute nodes are weakly typed, but this is the supported path.
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      void renderer.compute(chunk.leafWindRuntime.computeNode)
+      void renderer.compute(activeLodState.leafWindRuntime.computeNode)
     }
     renderer.render(scene, camera)
     reportPerformanceStats()

@@ -164,6 +164,9 @@ describe('mergeScenePerformanceStats', () => {
       fps: 58.4,
       visibleChunkCount: 1,
       culledChunkCount: 0,
+      nearLodChunkCount: 1,
+      midLodChunkCount: 0,
+      farLodChunkCount: 0,
     })
 
     expect(merged.drawCalls).toBe(4)
@@ -174,6 +177,9 @@ describe('mergeScenePerformanceStats', () => {
     expect(merged.fps).toBeCloseTo(58.4)
     expect(merged.visibleChunkCount).toBe(1)
     expect(merged.culledChunkCount).toBe(0)
+    expect(merged.nearLodChunkCount).toBe(1)
+    expect(merged.midLodChunkCount).toBe(0)
+    expect(merged.farLodChunkCount).toBe(0)
     expect(merged.leafInstanceCount).toBe(8)
   })
 })

@@ -84,6 +84,37 @@ describe('buildTrunkGeometry', () => {
     expect(geometry.boundingBox!.min.y).toBeLessThan(-0.15)
     expect(geometry.boundingBox!.max.y).toBeGreaterThan(2.55)
   })
+
+  it('uses fewer vertices when lower radial segments are requested for lod', () => {
+    const detailed = buildTrunkGeometry(
+      [
+        {
+          start: { x: 0, y: 0, z: 0 },
+          end: { x: 0, y: 2.4, z: 0 },
+          startRadius: 0.9,
+          endRadius: 0.7,
+          depth: 0,
+        },
+      ],
+      { radialSegments: 8 }
+    )
+    const simplified = buildTrunkGeometry(
+      [
+        {
+          start: { x: 0, y: 0, z: 0 },
+          end: { x: 0, y: 2.4, z: 0 },
+          startRadius: 0.9,
+          endRadius: 0.7,
+          depth: 0,
+        },
+      ],
+      { radialSegments: 4 }
+    )
+
+    expect(
+      simplified.getAttribute('position').count
+    ).toBeLessThan(detailed.getAttribute('position').count)
+  })
 })
 
 describe('collapseTrunkSegments', () => {

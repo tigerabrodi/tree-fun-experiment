@@ -43,6 +43,9 @@ export interface ScenePerformanceStats extends StaticScenePerformanceStats {
   fps: number
   visibleChunkCount: number
   culledChunkCount: number
+  nearLodChunkCount: number
+  midLodChunkCount: number
+  farLodChunkCount: number
 }
 
 export interface SceneDebugSnapshot {
@@ -79,6 +82,9 @@ interface LiveRenderPerformanceStats {
   fps: number
   visibleChunkCount: number
   culledChunkCount: number
+  nearLodChunkCount: number
+  midLodChunkCount: number
+  farLodChunkCount: number
 }
 
 function roundRebuildMs(rebuildMs: number): number {

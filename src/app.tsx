@@ -23,9 +23,33 @@ export function App() {
     DEFAULT_DEBUG_VIEW_SETTINGS
   )
   const [variationSeed, setVariationSeed] = useState(createVariationSeed)
+  const [canvasKey, setCanvasKey] = useState(0)
   const [performanceStats, setPerformanceStats] =
     useState<ScenePerformanceStats | null>(null)
   const sceneRef = useRef<SceneContext | null>(null)
+  const perfRecoveryTriggeredRef = useRef(false)
+
+  const handlePerformanceStatsChange = useCallback(
+    (stats: ScenePerformanceStats) => {
+      const hasLodStats =
+        Number.isFinite(stats.nearLodChunkCount) &&
+        Number.isFinite(stats.midLodChunkCount) &&
+        Number.isFinite(stats.farLodChunkCount)
+
+      if (!hasLodStats) {
+        if (!perfRecoveryTriggeredRef.current) {
+          perfRecoveryTriggeredRef.current = true
+          setPerformanceStats(null)
+          setCanvasKey((current) => current + 1)
+        }
+        return
+      }
+
+      perfRecoveryTriggeredRef.current = false
+      setPerformanceStats(stats)
+    },
+    []
+  )
 
   const rebuildScene = useCallback(
     (
@@ -102,13 +126,14 @@ export function App() {
         onViewPreset={handleViewPreset}
       />
       <TreeCanvas
+        key={canvasKey}
         config={config}
         forest={forest}
         wind={wind}
         debugView={debugView}
         variationSeed={variationSeed}
         sceneRef={sceneRef}
-        onPerformanceStatsChange={setPerformanceStats}
+        onPerformanceStatsChange={handlePerformanceStatsChange}
       />
     </div>
   )

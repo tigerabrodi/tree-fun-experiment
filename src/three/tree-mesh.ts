@@ -6,6 +6,10 @@ import type { SpeciesConfig } from '@/engine/species'
 const BRANCH_CONTINUATION_DOT_MIN = 0.985
 const TUBE_RADIAL_SEGMENTS = 8
 
+export interface BuildTrunkGeometryOptions {
+  radialSegments?: number
+}
+
 export interface TrunkWindProfile {
   baseWeight: number
   tipWeight: number
@@ -180,7 +184,8 @@ export function buildTrunkWindProfiles(
 
 function buildTubeSegment(
   seg: TreeSegment,
-  windProfile: TrunkWindProfile
+  windProfile: TrunkWindProfile,
+  radialSegments: number
 ): THREE.BufferGeometry | null {
   const dx = seg.end.x - seg.start.x
   const dy = seg.end.y - seg.start.y
@@ -216,7 +221,7 @@ function buildTubeSegment(
     seg.endRadius,
     seg.startRadius,
     joinedLength,
-    TUBE_RADIAL_SEGMENTS,
+    radialSegments,
     1,
     false
   )
@@ -255,13 +260,19 @@ function buildTubeSegment(
 }
 
 export function buildTrunkGeometry(
-  segments: Array<TreeSegment>
+  segments: Array<TreeSegment>,
+  options: BuildTrunkGeometryOptions = {}
 ): THREE.BufferGeometry {
+  const radialSegments = options.radialSegments ?? TUBE_RADIAL_SEGMENTS
   const collapsedSegments = collapseTrunkSegments(segments)
   const windProfiles = buildTrunkWindProfiles(collapsedSegments)
   const geos: Array<THREE.BufferGeometry> = []
   for (let i = 0; i < collapsedSegments.length; i++) {
-    const geo = buildTubeSegment(collapsedSegments[i], windProfiles[i])
+    const geo = buildTubeSegment(
+      collapsedSegments[i],
+      windProfiles[i],
+      radialSegments
+    )
     if (geo) geos.push(geo)
   }
   if (geos.length === 0) return new THREE.BufferGeometry()

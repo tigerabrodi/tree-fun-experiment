@@ -94,11 +94,19 @@ export function Panel({
     onDebugViewChange(toggleDebugViewSetting(debugView, key))
   }
 
-  function formatInt(value: number) {
+  function formatInt(value: number | null | undefined) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return '—'
+    }
+
     return new Intl.NumberFormat('en-US').format(Math.round(value))
   }
 
-  function formatDecimal(value: number) {
+  function formatDecimal(value: number | null | undefined) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return '—'
+    }
+
     return value.toFixed(1)
   }
 
@@ -337,6 +345,21 @@ export function Panel({
             <span>Culled Chunks</span>
             <span className="text-right font-mono text-[var(--color-accent)]">
               {formatInt(performanceStats.culledChunkCount)}
+            </span>
+
+            <span>LOD Near</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.nearLodChunkCount)}
+            </span>
+
+            <span>LOD Mid</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.midLodChunkCount)}
+            </span>
+
+            <span>LOD Far</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.farLodChunkCount)}
             </span>
 
             <span>Chunk Size</span>
