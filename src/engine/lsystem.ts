@@ -100,6 +100,11 @@ function cloneState(s: TurtleState): TurtleState {
   }
 }
 
+function rotateFrameAroundHeading(state: TurtleState, angle: number) {
+  state.left = rotateAroundAxis(state.left, state.heading, angle)
+  state.up = rotateAroundAxis(state.up, state.heading, angle)
+}
+
 export function interpretLString(
   lstring: string,
   config: SpeciesConfig,
@@ -111,9 +116,12 @@ export function interpretLString(
 
   const baseAngle = (config.angle * Math.PI) / 180
   const variance = (config.angleVariance * Math.PI) / 180
+  const branchSpin = (config.branchSpin * Math.PI) / 180
+  const branchSpinJitter = (config.branchSpinJitter * Math.PI) / 180
 
   // Simple seeded random for reproducibility in tests
   let rng = seed ?? Math.random() * 99999
+  let branchCount = 0
   function random(): number {
     rng = (rng * 16807 + 0) % 2147483647
     return rng / 2147483647
@@ -121,6 +129,40 @@ export function interpretLString(
 
   function jitterAngle(): number {
     return baseAngle + (random() - 0.5) * 2 * variance
+  }
+
+  function addLeafPoint(position: Vec3 = state.position) {
+    leaves.push({
+      position: cloneVec3(position),
+      direction: cloneVec3(state.heading),
+      up: cloneVec3(state.up),
+    })
+  }
+
+  function addTerminalCrownCluster() {
+    const tip = cloneVec3(state.position)
+    const sideOffset = state.length * 0.18
+    const upOffset = state.length * 0.12
+
+    addLeafPoint(tip)
+    addLeafPoint(addScaled(tip, state.left, sideOffset))
+    addLeafPoint(addScaled(tip, state.left, -sideOffset))
+    addLeafPoint(addScaled(tip, state.up, upOffset))
+    addLeafPoint(addScaled(tip, state.up, -upOffset * 0.4))
+    addLeafPoint(
+      addScaled(
+        addScaled(tip, state.left, sideOffset * 0.7),
+        state.up,
+        upOffset * 0.6
+      )
+    )
+    addLeafPoint(
+      addScaled(
+        addScaled(tip, state.left, -sideOffset * 0.7),
+        state.up,
+        upOffset * 0.6
+      )
+    )
   }
 
   const state: TurtleState = {
@@ -135,8 +177,24 @@ export function interpretLString(
 
   for (const char of lstring) {
     switch (char) {
-      case 'F':
       case 'S': {
+        const stepLength = char === 'S' ? state.length * 0.55 : state.length
+        const start = cloneVec3(state.position)
+        const end = addScaled(state.position, state.heading, stepLength)
+        const nextRadius = state.radius * config.segmentTaper
+        segments.push({
+          start,
+          end,
+          startRadius: state.radius,
+          endRadius: nextRadius,
+          depth: state.depth,
+        })
+        state.position = end
+        state.length *= config.lengthDecay
+        state.radius = nextRadius
+        break
+      }
+      case 'F': {
         const start = cloneVec3(state.position)
         const end = addScaled(state.position, state.heading, state.length)
         const nextRadius = state.radius * config.segmentTaper
@@ -200,14 +258,20 @@ export function interpretLString(
       case '[': {
         stack.push(cloneState(state))
         state.depth++
+        if (branchSpin !== 0) {
+          branchCount++
+          const spinJitter = (random() - 0.5) * 2 * branchSpinJitter
+          rotateFrameAroundHeading(state, branchCount * branchSpin + spinJitter)
+        }
         break
       }
       case ']': {
-        leaves.push({
-          position: cloneVec3(state.position),
-          direction: cloneVec3(state.heading),
-          up: cloneVec3(state.up),
-        })
+        if (
+          state.depth >= config.leafDepthMin &&
+          random() <= config.leafDensity
+        ) {
+          addLeafPoint()
+        }
         const popped = stack.pop()
         if (popped) {
           state.position = popped.position
@@ -217,6 +281,13 @@ export function interpretLString(
           state.length = popped.length
           state.radius = popped.radius
           state.depth = popped.depth
+        }
+        break
+      }
+      case 'T':
+      case 'A': {
+        if (config.leafDensity > 0) {
+          addTerminalCrownCluster()
         }
         break
       }

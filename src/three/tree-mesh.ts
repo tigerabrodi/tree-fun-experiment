@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { TreeSegment, LeafPoint } from '@/engine/lsystem'
 import type { SpeciesConfig } from '@/engine/species'
 
+const BRANCH_CONTINUATION_DOT_MIN = 0.985
 const TUBE_RADIAL_SEGMENTS = 8
 
 export interface TrunkWindProfile {
@@ -19,9 +20,10 @@ function hashSegmentPhase(segment: TreeSegment): number {
   const midX = (segment.start.x + segment.end.x) * 0.5
   const midY = (segment.start.y + segment.end.y) * 0.5
   const midZ = (segment.start.z + segment.end.z) * 0.5
-  const hashed = Math.sin(
-    midX * 12.9898 + midY * 78.233 + midZ * 45.164 + segment.depth * 19.19
-  ) * 43758.5453
+  const hashed =
+    Math.sin(
+      midX * 12.9898 + midY * 78.233 + midZ * 45.164 + segment.depth * 19.19
+    ) * 43758.5453
 
   return hashed - Math.floor(hashed)
 }
@@ -34,6 +36,98 @@ function createSeededRandom(seed: number) {
     rng = (rng * 16807) % 2147483647
     return rng / 2147483647
   }
+}
+
+function pointKey(point: TreeSegment['start']): string {
+  return `${point.x.toFixed(4)},${point.y.toFixed(4)},${point.z.toFixed(4)}`
+}
+
+function getSegmentDirection(segment: TreeSegment): THREE.Vector3 {
+  return new THREE.Vector3(
+    segment.end.x - segment.start.x,
+    segment.end.y - segment.start.y,
+    segment.end.z - segment.start.z
+  ).normalize()
+}
+
+function canMergeSegments(a: TreeSegment, b: TreeSegment): boolean {
+  if (a.depth !== b.depth) return false
+  if (pointKey(a.end) !== pointKey(b.start)) return false
+  if (Math.abs(a.endRadius - b.startRadius) > 1e-4) return false
+
+  const directionDot = getSegmentDirection(a).dot(getSegmentDirection(b))
+  return directionDot >= BRANCH_CONTINUATION_DOT_MIN
+}
+
+export function collapseTrunkSegments(
+  segments: Array<TreeSegment>
+): Array<TreeSegment> {
+  if (segments.length <= 1) {
+    return segments
+  }
+
+  const incoming = new Map<string, Array<number>>()
+  const outgoing = new Map<string, Array<number>>()
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i]
+    const startKey = pointKey(segment.start)
+    const endKey = pointKey(segment.end)
+
+    const startList = outgoing.get(startKey) ?? []
+    startList.push(i)
+    outgoing.set(startKey, startList)
+
+    const endList = incoming.get(endKey) ?? []
+    endList.push(i)
+    incoming.set(endKey, endList)
+  }
+
+  const visited = new Set<number>()
+  const collapsed: Array<TreeSegment> = []
+
+  for (let i = 0; i < segments.length; i++) {
+    if (visited.has(i)) continue
+
+    const segment = segments[i]
+    const previousCandidates = incoming.get(pointKey(segment.start)) ?? []
+    const outgoingFromStart = outgoing.get(pointKey(segment.start)) ?? []
+    const hasMergeablePrevious =
+      previousCandidates.length === 1 &&
+      outgoingFromStart.length === 1 &&
+      canMergeSegments(segments[previousCandidates[0]], segment)
+
+    if (hasMergeablePrevious) {
+      continue
+    }
+
+    let lastSegment = segment
+    visited.add(i)
+
+    while (true) {
+      const nextCandidates = outgoing.get(pointKey(lastSegment.end)) ?? []
+      if (nextCandidates.length !== 1) break
+
+      const nextIndex = nextCandidates[0]
+      if (visited.has(nextIndex)) break
+
+      const nextSegment = segments[nextIndex]
+      if (!canMergeSegments(lastSegment, nextSegment)) break
+
+      visited.add(nextIndex)
+      lastSegment = nextSegment
+    }
+
+    collapsed.push({
+      start: segment.start,
+      end: lastSegment.end,
+      startRadius: segment.startRadius,
+      endRadius: lastSegment.endRadius,
+      depth: segment.depth,
+    })
+  }
+
+  return collapsed
 }
 
 export function buildTrunkWindProfiles(
@@ -73,9 +167,7 @@ export function buildTrunkWindProfiles(
         0.05
     )
     const tipWeight = clamp01(
-      Math.pow(endHeight, 1.1) * 0.72 +
-        flexibility * 0.38 +
-        depthFactor * 0.24
+      Math.pow(endHeight, 1.1) * 0.72 + flexibility * 0.38 + depthFactor * 0.24
     )
 
     return {
@@ -97,29 +189,49 @@ function buildTubeSegment(
   if (length < 0.001) return null
 
   const dir = new THREE.Vector3(dx / length, dy / length, dz / length)
+  const startOverlap = Math.min(
+    length * 0.28,
+    Math.max(seg.startRadius, seg.endRadius) * 0.75 +
+      Math.min(seg.startRadius, seg.endRadius) * 0.18
+  )
+  const endOverlap = Math.min(
+    length * 0.18,
+    seg.endRadius * 0.55 + seg.startRadius * 0.08
+  )
+  const joinedStart = new THREE.Vector3(
+    seg.start.x - dir.x * startOverlap,
+    seg.start.y - dir.y * startOverlap,
+    seg.start.z - dir.z * startOverlap
+  )
+  const joinedEnd = new THREE.Vector3(
+    seg.end.x + dir.x * endOverlap,
+    seg.end.y + dir.y * endOverlap,
+    seg.end.z + dir.z * endOverlap
+  )
+  const joinedLength = joinedStart.distanceTo(joinedEnd)
   const up = new THREE.Vector3(0, 1, 0)
   const quat = new THREE.Quaternion().setFromUnitVectors(up, dir)
 
   const geo = new THREE.CylinderGeometry(
     seg.endRadius,
     seg.startRadius,
-    length,
+    joinedLength,
     TUBE_RADIAL_SEGMENTS,
     1,
-    true
+    false
   )
 
   // Scale V so bark tiles proportionally
   const uvAttr = geo.attributes.uv
   for (let i = 0; i < uvAttr.count; i++) {
-    uvAttr.setY(i, uvAttr.getY(i) * length * 2)
+    uvAttr.setY(i, uvAttr.getY(i) * joinedLength * 2)
   }
 
   const posAttr = geo.attributes.position
   const windWeights = new Float32Array(posAttr.count)
   const windPhases = new Float32Array(posAttr.count)
   for (let i = 0; i < posAttr.count; i++) {
-    const tipFactor = clamp01(posAttr.getY(i) / length + 0.5)
+    const tipFactor = clamp01(posAttr.getY(i) / joinedLength + 0.5)
     windWeights[i] = THREE.MathUtils.lerp(
       windProfile.baseWeight,
       windProfile.tipWeight,
@@ -127,12 +239,15 @@ function buildTubeSegment(
     )
     windPhases[i] = windProfile.phase
   }
-  geo.setAttribute('windWeight', new THREE.Float32BufferAttribute(windWeights, 1))
+  geo.setAttribute(
+    'windWeight',
+    new THREE.Float32BufferAttribute(windWeights, 1)
+  )
   geo.setAttribute('windPhase', new THREE.Float32BufferAttribute(windPhases, 1))
 
-  const midX = (seg.start.x + seg.end.x) / 2
-  const midY = (seg.start.y + seg.end.y) / 2
-  const midZ = (seg.start.z + seg.end.z) / 2
+  const midX = (joinedStart.x + joinedEnd.x) / 2
+  const midY = (joinedStart.y + joinedEnd.y) / 2
+  const midZ = (joinedStart.z + joinedEnd.z) / 2
   geo.applyQuaternion(quat)
   geo.translate(midX, midY, midZ)
 
@@ -142,10 +257,11 @@ function buildTubeSegment(
 export function buildTrunkGeometry(
   segments: Array<TreeSegment>
 ): THREE.BufferGeometry {
-  const windProfiles = buildTrunkWindProfiles(segments)
+  const collapsedSegments = collapseTrunkSegments(segments)
+  const windProfiles = buildTrunkWindProfiles(collapsedSegments)
   const geos: Array<THREE.BufferGeometry> = []
-  for (let i = 0; i < segments.length; i++) {
-    const geo = buildTubeSegment(segments[i]!, windProfiles[i]!)
+  for (let i = 0; i < collapsedSegments.length; i++) {
+    const geo = buildTubeSegment(collapsedSegments[i], windProfiles[i])
     if (geo) geos.push(geo)
   }
   if (geos.length === 0) return new THREE.BufferGeometry()
@@ -161,33 +277,73 @@ export function createLeafGeometry(size: number): THREE.BufferGeometry {
 
 export function buildLeafMatrices(
   leaves: Array<LeafPoint>,
-  seed: number
+  seed: number,
+  config: Pick<SpeciesConfig, 'leafClusterCount' | 'leafClusterSpread'>
 ): Array<THREE.Matrix4> {
   const matrices: Array<THREE.Matrix4> = []
   const dummy = new THREE.Object3D()
-  const up = new THREE.Vector3(0, 1, 0)
+  const worldUp = new THREE.Vector3(0, 1, 0)
+  const worldRight = new THREE.Vector3(1, 0, 0)
   const random = createSeededRandom(seed)
+  const clusterCount = Math.max(1, Math.round(config.leafClusterCount))
+  const clusterSpread = Math.max(0, config.leafClusterSpread)
 
   for (const leaf of leaves) {
-    dummy.position.set(leaf.position.x, leaf.position.y, leaf.position.z)
-
     const dir = new THREE.Vector3(
       leaf.direction.x,
       leaf.direction.y,
       leaf.direction.z
-    )
-    const quat = new THREE.Quaternion().setFromUnitVectors(up, dir)
-    const twist = new THREE.Quaternion().setFromAxisAngle(
-      dir,
-      random() * Math.PI
-    )
-    quat.multiply(twist)
-    dummy.quaternion.copy(quat)
+    ).normalize()
+    const localUp = new THREE.Vector3(
+      leaf.up.x,
+      leaf.up.y,
+      leaf.up.z
+    ).normalize()
+    const side = new THREE.Vector3().crossVectors(dir, localUp)
 
-    const s = 0.72 + random() * 0.48
-    dummy.scale.setScalar(s)
-    dummy.updateMatrix()
-    matrices.push(dummy.matrix.clone())
+    if (side.lengthSq() < 1e-6) {
+      side.crossVectors(dir, worldUp)
+    }
+    if (side.lengthSq() < 1e-6) {
+      side.crossVectors(dir, worldRight)
+    }
+    side.normalize()
+
+    const basisUp = new THREE.Vector3().crossVectors(side, dir).normalize()
+
+    for (let i = 0; i < clusterCount; i++) {
+      const sideOffset = i === 0 ? 0 : (random() - 0.5) * 2 * clusterSpread
+      const upOffset = i === 0 ? 0 : (random() - 0.28) * clusterSpread * 1.15
+      const forwardOffset = i === 0 ? 0 : (random() - 0.2) * clusterSpread * 0.8
+
+      dummy.position.set(
+        leaf.position.x +
+          side.x * sideOffset +
+          basisUp.x * upOffset +
+          dir.x * forwardOffset,
+        leaf.position.y +
+          side.y * sideOffset +
+          basisUp.y * upOffset +
+          dir.y * forwardOffset,
+        leaf.position.z +
+          side.z * sideOffset +
+          basisUp.z * upOffset +
+          dir.z * forwardOffset
+      )
+
+      const quat = new THREE.Quaternion().setFromUnitVectors(worldUp, dir)
+      const twist = new THREE.Quaternion().setFromAxisAngle(
+        dir,
+        random() * Math.PI
+      )
+      quat.multiply(twist)
+      dummy.quaternion.copy(quat)
+
+      const s = i === 0 ? 0.95 + random() * 0.2 : 0.68 + random() * 0.42
+      dummy.scale.setScalar(s)
+      dummy.updateMatrix()
+      matrices.push(dummy.matrix.clone())
+    }
   }
 
   return matrices
@@ -201,7 +357,7 @@ export function buildLeafMeshFromMatrices(
   const mesh = new THREE.InstancedMesh(geometry, material, matrices.length)
 
   for (let i = 0; i < matrices.length; i++) {
-    mesh.setMatrixAt(i, matrices[i]!)
+    mesh.setMatrixAt(i, matrices[i])
   }
 
   mesh.instanceMatrix.needsUpdate = true
@@ -215,6 +371,6 @@ export function buildLeafMesh(
   seed: number
 ): THREE.InstancedMesh {
   const geometry = createLeafGeometry(config.leafSize)
-  const matrices = buildLeafMatrices(leaves, seed)
+  const matrices = buildLeafMatrices(leaves, seed, config)
   return buildLeafMeshFromMatrices(geometry, matrices, material)
 }

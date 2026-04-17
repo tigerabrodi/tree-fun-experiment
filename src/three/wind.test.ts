@@ -25,7 +25,7 @@ describe('packLeafWindData', () => {
     expect(packed[4]).toBeCloseTo(-4, 5)
     expect(packed[5]).toBeCloseTo(10, 5)
     expect(packed[6]).toBeCloseTo(6, 5)
-    expect(packed[3]).toBeLessThan(packed[7]!)
+    expect(packed[3]).toBeLessThan(packed[7])
     expect(packed[3]).toBeGreaterThanOrEqual(0.18)
     expect(packed[7]).toBeLessThanOrEqual(1)
   })

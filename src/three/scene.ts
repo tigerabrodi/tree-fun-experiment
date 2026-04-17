@@ -21,6 +21,8 @@ import {
   type WindSettings,
 } from './wind'
 
+export type ViewPreset = 'front' | 'quarter' | 'side' | 'top' | 'close'
+
 export interface SceneContext {
   renderer: THREE.WebGPURenderer
   scene: THREE.Scene
@@ -32,6 +34,7 @@ export interface SceneContext {
     wind: WindSettings,
     variationSeed: number
   ) => Promise<void>
+  setViewPreset: (preset: ViewPreset) => void
   dispose: () => void
 }
 
@@ -41,18 +44,27 @@ const barkCache = new Map<
 >()
 const leafCache = new Map<string, THREE.Texture>()
 
+interface SceneFrame {
+  center: THREE.Vector3
+  size: THREE.Vector3
+  forestMode: ForestSettings['mode']
+}
+
 function disposeGroupResources(group: THREE.Group) {
   const materials = new Set<THREE.Material>()
 
   group.traverse((obj) => {
     if (obj instanceof THREE.Mesh || obj instanceof THREE.InstancedMesh) {
-      obj.geometry.dispose()
-      if (Array.isArray(obj.material)) {
-        for (const material of obj.material) {
-          materials.add(material)
+      const geometry = obj.geometry as THREE.BufferGeometry
+      const material = obj.material as THREE.Material | Array<THREE.Material>
+
+      geometry.dispose()
+      if (Array.isArray(material)) {
+        for (const materialItem of material) {
+          materials.add(materialItem)
         }
       } else {
-        materials.add(obj.material)
+        materials.add(material)
       }
     }
   })
@@ -79,13 +91,86 @@ async function getLeafTexture(species: string) {
 
 function createTreeMatrix(instance: ForestInstance): THREE.Matrix4 {
   return new THREE.Matrix4().compose(
-    new THREE.Vector3(instance.position.x, instance.position.y, instance.position.z),
+    new THREE.Vector3(
+      instance.position.x,
+      instance.position.y,
+      instance.position.z
+    ),
     new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(0, 1, 0),
       instance.rotationY
     ),
     new THREE.Vector3(instance.scale, instance.scale, instance.scale)
   )
+}
+
+function createSceneFrame(
+  box: THREE.Box3,
+  forestMode: ForestSettings['mode']
+): SceneFrame {
+  return {
+    center: box.getCenter(new THREE.Vector3()),
+    size: box.getSize(new THREE.Vector3()),
+    forestMode,
+  }
+}
+
+function cloneSceneFrame(frame: SceneFrame): SceneFrame {
+  return {
+    center: frame.center.clone(),
+    size: frame.size.clone(),
+    forestMode: frame.forestMode,
+  }
+}
+
+function applyViewPreset(
+  camera: THREE.PerspectiveCamera,
+  controls: OrbitControls,
+  frame: SceneFrame,
+  preset: ViewPreset
+) {
+  const maxDim = Math.max(frame.size.x, frame.size.y, frame.size.z)
+  const fov = camera.fov * (Math.PI / 180)
+  const dist = (maxDim / (2 * Math.tan(fov / 2))) * 1.4
+  const target = frame.center.clone()
+
+  if (frame.forestMode === 'giant') {
+    target.y *= 0.55
+  }
+
+  let offset: THREE.Vector3
+
+  switch (preset) {
+    case 'front':
+      offset = new THREE.Vector3(0, maxDim * 0.06, dist)
+      break
+    case 'side':
+      offset = new THREE.Vector3(dist, maxDim * 0.06, 0)
+      break
+    case 'top':
+      offset =
+        frame.forestMode === 'giant'
+          ? new THREE.Vector3(dist * 0.05, dist * 1.15, dist * 0.05)
+          : new THREE.Vector3(dist * 0.04, dist * 1.12, dist * 0.04)
+      break
+    case 'close':
+      offset =
+        frame.forestMode === 'giant'
+          ? new THREE.Vector3(dist * 0.16, maxDim * 0.04, dist * 0.42)
+          : new THREE.Vector3(dist * 0.18, maxDim * 0.05, dist * 0.48)
+      break
+    case 'quarter':
+    default:
+      offset =
+        frame.forestMode === 'giant'
+          ? new THREE.Vector3(dist * 0.32, maxDim * 0.08, dist * 0.9)
+          : new THREE.Vector3(dist * 0.4, maxDim * 0.08, dist * 0.92)
+      break
+  }
+
+  controls.target.copy(target)
+  camera.position.copy(target.clone().add(offset))
+  controls.update()
 }
 
 function buildSharedForestGroup(
@@ -106,13 +191,17 @@ function buildSharedForestGroup(
   const treeMatrices = layout.map((item) => createTreeMatrix(item))
 
   for (let i = 0; i < treeMatrices.length; i++) {
-    trunkMesh.setMatrixAt(i, treeMatrices[i]!)
+    trunkMesh.setMatrixAt(i, treeMatrices[i])
   }
   trunkMesh.instanceMatrix.needsUpdate = true
   trunkMesh.computeBoundingBox()
   group.add(trunkMesh)
 
-  const baseLeafMatrices = buildLeafMatrices(baseTree.leaves, variationSeed)
+  const baseLeafMatrices = buildLeafMatrices(
+    baseTree.leaves,
+    variationSeed,
+    config
+  )
   const leafMatrices: Array<THREE.Matrix4> = []
 
   for (const treeMatrix of treeMatrices) {
@@ -189,6 +278,7 @@ export async function createScene(
   let treeGroup: THREE.Group | null = null
   let leafWindRuntime: LeafWindRuntime | null = null
   let rebuildVersion = 0
+  let currentFrame: SceneFrame | null = null
 
   async function rebuildScene(
     config: SpeciesConfig,
@@ -197,6 +287,11 @@ export async function createScene(
     variationSeed: number
   ) {
     const version = ++rebuildVersion
+    const previousFrame = currentFrame ? cloneSceneFrame(currentFrame) : null
+    const cameraOffset = camera.position.clone().sub(controls.target)
+    const targetOffset = previousFrame
+      ? controls.target.clone().sub(previousFrame.center)
+      : null
 
     if (treeGroup) {
       scene.remove(treeGroup)
@@ -236,7 +331,11 @@ export async function createScene(
       const lstring = generateLString(config)
 
       for (const item of layout) {
-        const { segments, leaves } = interpretLString(lstring, config, item.seed)
+        const { segments, leaves } = interpretLString(
+          lstring,
+          config,
+          item.seed
+        )
         const tree = new THREE.Group()
         tree.position.set(item.position.x, item.position.y, item.position.z)
         tree.rotation.y = item.rotationY
@@ -249,7 +348,7 @@ export async function createScene(
 
         if (leaves.length > 0) {
           const treeMatrix = createTreeMatrix(item)
-          const baseLeafMatrices = buildLeafMatrices(leaves, item.seed)
+          const baseLeafMatrices = buildLeafMatrices(leaves, item.seed, config)
 
           for (const baseLeafMatrix of baseLeafMatrices) {
             leafMatrices.push(treeMatrix.clone().multiply(baseLeafMatrix))
@@ -274,6 +373,7 @@ export async function createScene(
 
     group.updateMatrixWorld(true)
     const box = new THREE.Box3().setFromObject(group)
+    const nextFrame = createSceneFrame(box, forest.mode)
 
     if (version !== rebuildVersion) {
       nextLeafWindRuntime?.dispose()
@@ -283,27 +383,17 @@ export async function createScene(
 
     leafWindRuntime = nextLeafWindRuntime
     treeGroup = group
+    currentFrame = nextFrame
     scene.add(treeGroup)
 
-    // Auto fit camera to tree bounds
-    const center = box.getCenter(new THREE.Vector3())
-    const size = box.getSize(new THREE.Vector3())
-    const maxDim = Math.max(size.x, size.y, size.z)
-    const fov = camera.fov * (Math.PI / 180)
-    const dist = maxDim / (2 * Math.tan(fov / 2)) * 1.4
-
-    if (forest.mode === 'giant') {
-      controls.target.set(center.x, center.y * 0.55, center.z)
-      camera.position.set(
-        center.x + dist * 0.32,
-        center.y + maxDim * 0.08,
-        center.z + dist * 0.9
-      )
+    if (previousFrame && targetOffset) {
+      const nextTarget = nextFrame.center.clone().add(targetOffset)
+      controls.target.copy(nextTarget)
+      camera.position.copy(nextTarget.clone().add(cameraOffset))
+      controls.update()
     } else {
-      controls.target.set(0, center.y, 0)
-      camera.position.set(0, center.y, dist)
+      applyViewPreset(camera, controls, nextFrame, 'quarter')
     }
-    controls.update()
   }
 
   // Build initial tree
@@ -345,9 +435,11 @@ export async function createScene(
   resizeObserver.observe(canvas)
 
   // Animation loop
-  renderer.setAnimationLoop(() => {
+  void renderer.setAnimationLoop(() => {
     if (leafWindRuntime) {
-      renderer.compute(leafWindRuntime.computeNode)
+      // Three TSL compute nodes are weakly typed, but this is the supported path.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      void renderer.compute(leafWindRuntime.computeNode)
     }
     controls.update()
     renderer.render(scene, camera)
@@ -355,7 +447,7 @@ export async function createScene(
 
   function dispose() {
     resizeObserver.disconnect()
-    renderer.setAnimationLoop(null)
+    void renderer.setAnimationLoop(null)
     if (leafWindRuntime) {
       leafWindRuntime.dispose()
       leafWindRuntime = null
@@ -368,5 +460,16 @@ export async function createScene(
     renderer.dispose()
   }
 
-  return { renderer, scene, camera, controls, rebuildScene, dispose }
+  return {
+    renderer,
+    scene,
+    camera,
+    controls,
+    rebuildScene,
+    setViewPreset(preset) {
+      if (!currentFrame) return
+      applyViewPreset(camera, controls, currentFrame, preset)
+    },
+    dispose,
+  }
 }

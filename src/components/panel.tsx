@@ -4,6 +4,7 @@ import {
   type ForestSettings,
 } from '@/engine/forest'
 import { ALL_SPECIES, type SpeciesConfig } from '@/engine/species'
+import type { ViewPreset } from '@/three/scene'
 import { type WindSettings } from '@/three/wind'
 
 interface PanelProps {
@@ -14,6 +15,7 @@ interface PanelProps {
   onForestChange: (forest: ForestSettings) => void
   onWindChange: (wind: WindSettings) => void
   onRegenerate: () => void
+  onViewPreset: (preset: ViewPreset) => void
 }
 
 function Slider({
@@ -62,6 +64,7 @@ export function Panel({
   onForestChange,
   onWindChange,
   onRegenerate,
+  onViewPreset,
 }: PanelProps) {
   function update(partial: Partial<SpeciesConfig>) {
     onChange({ ...config, ...partial })
@@ -87,7 +90,7 @@ export function Panel({
 
       {/* Species */}
       <div className="flex flex-col gap-4">
-        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
+        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] tracking-[0.12em] text-[var(--color-text-dim)] uppercase">
           Species
         </div>
         <select
@@ -108,7 +111,7 @@ export function Panel({
 
       {/* Structure */}
       <div className="flex flex-col gap-5">
-        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
+        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] tracking-[0.12em] text-[var(--color-text-dim)] uppercase">
           Structure
         </div>
         <Slider
@@ -171,7 +174,7 @@ export function Panel({
 
       {/* Foliage */}
       <div className="flex flex-col gap-5">
-        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
+        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] tracking-[0.12em] text-[var(--color-text-dim)] uppercase">
           Foliage
         </div>
         <Slider
@@ -182,10 +185,18 @@ export function Panel({
           step={0.1}
           onChange={(v) => update({ leafSize: v })}
         />
+        <Slider
+          label="Leaf Density"
+          value={config.leafDensity}
+          min={0}
+          max={1}
+          step={0.05}
+          onChange={(v) => update({ leafDensity: v })}
+        />
       </div>
 
       <div className="flex flex-col gap-5">
-        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
+        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] tracking-[0.12em] text-[var(--color-text-dim)] uppercase">
           Forest
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -221,7 +232,7 @@ export function Panel({
       </div>
 
       <div className="flex flex-col gap-5">
-        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
+        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] tracking-[0.12em] text-[var(--color-text-dim)] uppercase">
           Wind
         </div>
         <Slider
@@ -248,6 +259,44 @@ export function Panel({
           step={1}
           onChange={(v) => updateWind({ direction: v })}
         />
+      </div>
+
+      <div className="flex flex-col gap-5">
+        <div className="border-b border-[var(--color-border-light)] pb-2 text-[11px] tracking-[0.12em] text-[var(--color-text-dim)] uppercase">
+          Camera
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => onViewPreset('front')}
+            className="tree-button-secondary"
+          >
+            Front
+          </button>
+          <button
+            onClick={() => onViewPreset('quarter')}
+            className="tree-button-secondary"
+          >
+            Quarter
+          </button>
+          <button
+            onClick={() => onViewPreset('side')}
+            className="tree-button-secondary"
+          >
+            Side
+          </button>
+          <button
+            onClick={() => onViewPreset('top')}
+            className="tree-button-secondary"
+          >
+            Top
+          </button>
+          <button
+            onClick={() => onViewPreset('close')}
+            className="tree-button-secondary"
+          >
+            Close
+          </button>
+        </div>
       </div>
 
       <div className="mt-auto pt-4">

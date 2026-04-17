@@ -1,5 +1,11 @@
+import * as THREE from 'three/webgpu'
 import { describe, expect, it } from 'vitest'
-import { buildTrunkGeometry, buildTrunkWindProfiles } from './tree-mesh'
+import {
+  buildLeafMatrices,
+  collapseTrunkSegments,
+  buildTrunkGeometry,
+  buildTrunkWindProfiles,
+} from './tree-mesh'
 
 describe('buildTrunkWindProfiles', () => {
   it('keeps the trunk base stiff and the outer wood more flexible', () => {
@@ -23,10 +29,10 @@ describe('buildTrunkWindProfiles', () => {
     const profiles = buildTrunkWindProfiles(segments)
 
     expect(profiles).toHaveLength(2)
-    expect(profiles[0]!.baseWeight).toBeCloseTo(0, 5)
-    expect(profiles[0]!.tipWeight).toBeLessThan(profiles[1]!.tipWeight)
-    expect(profiles[1]!.baseWeight).toBeGreaterThan(profiles[0]!.baseWeight)
-    expect(profiles[1]!.phase).not.toBeCloseTo(profiles[0]!.phase, 5)
+    expect(profiles[0].baseWeight).toBeCloseTo(0, 5)
+    expect(profiles[0].tipWeight).toBeLessThan(profiles[1].tipWeight)
+    expect(profiles[1].baseWeight).toBeGreaterThan(profiles[0].baseWeight)
+    expect(profiles[1].phase).not.toBeCloseTo(profiles[0].phase, 5)
   })
 })
 
@@ -58,5 +64,137 @@ describe('buildTrunkGeometry', () => {
     expect(Math.min(...weights)).toBeGreaterThanOrEqual(0)
     expect(Math.max(...weights)).toBeLessThanOrEqual(1)
     expect(Math.max(...weights)).toBeGreaterThan(0.8)
+  })
+
+  it('extends bark segments past their raw endpoints to hide joint seams', () => {
+    const geometry = buildTrunkGeometry([
+      {
+        start: { x: 0, y: 0, z: 0 },
+        end: { x: 0, y: 2.4, z: 0 },
+        startRadius: 0.9,
+        endRadius: 0.7,
+        depth: 0,
+      },
+    ])
+
+    geometry.computeBoundingBox()
+
+    expect(geometry.boundingBox).toBeTruthy()
+    expect(geometry.boundingBox!.min.y).toBeLessThan(-0.15)
+    expect(geometry.boundingBox!.max.y).toBeGreaterThan(2.55)
+  })
+})
+
+describe('collapseTrunkSegments', () => {
+  it('merges straight bark runs into one continuous render segment', () => {
+    const segments = collapseTrunkSegments([
+      {
+        start: { x: 0, y: 0, z: 0 },
+        end: { x: 0, y: 1, z: 0 },
+        startRadius: 0.9,
+        endRadius: 0.8,
+        depth: 0,
+      },
+      {
+        start: { x: 0, y: 1, z: 0 },
+        end: { x: 0, y: 2, z: 0 },
+        startRadius: 0.8,
+        endRadius: 0.7,
+        depth: 0,
+      },
+      {
+        start: { x: 0, y: 2, z: 0 },
+        end: { x: 0, y: 3, z: 0 },
+        startRadius: 0.7,
+        endRadius: 0.6,
+        depth: 0,
+      },
+    ])
+
+    expect(segments).toHaveLength(1)
+    expect(segments[0].start.y).toBe(0)
+    expect(segments[0].end.y).toBe(3)
+    expect(segments[0].startRadius).toBe(0.9)
+    expect(segments[0].endRadius).toBe(0.6)
+  })
+
+  it('keeps fork points split instead of merging across branching nodes', () => {
+    const segments = collapseTrunkSegments([
+      {
+        start: { x: 0, y: 0, z: 0 },
+        end: { x: 0, y: 1, z: 0 },
+        startRadius: 0.9,
+        endRadius: 0.8,
+        depth: 0,
+      },
+      {
+        start: { x: 0, y: 1, z: 0 },
+        end: { x: 0, y: 2, z: 0 },
+        startRadius: 0.8,
+        endRadius: 0.7,
+        depth: 0,
+      },
+      {
+        start: { x: 0, y: 1, z: 0 },
+        end: { x: 1, y: 2, z: 0 },
+        startRadius: 0.8,
+        endRadius: 0.3,
+        depth: 1,
+      },
+    ])
+
+    expect(segments).toHaveLength(3)
+  })
+})
+
+describe('buildLeafMatrices', () => {
+  it('expands each leaf tip into a small deterministic cluster', () => {
+    const matrices = buildLeafMatrices(
+      [
+        {
+          position: { x: 1, y: 2, z: 3 },
+          direction: { x: 0, y: 1, z: 0 },
+          up: { x: 0, y: 0, z: 1 },
+        },
+      ],
+      42,
+      {
+        leafClusterCount: 4,
+        leafClusterSpread: 0.25,
+      }
+    )
+
+    const firstPosition = new THREE.Vector3().setFromMatrixPosition(matrices[0])
+    const secondPosition = new THREE.Vector3().setFromMatrixPosition(
+      matrices[1]
+    )
+
+    expect(matrices).toHaveLength(4)
+    expect(firstPosition.x).toBeCloseTo(1, 5)
+    expect(firstPosition.y).toBeCloseTo(2, 5)
+    expect(firstPosition.z).toBeCloseTo(3, 5)
+    expect(secondPosition.distanceTo(firstPosition)).toBeGreaterThan(0.01)
+
+    const repeatMatrices = buildLeafMatrices(
+      [
+        {
+          position: { x: 1, y: 2, z: 3 },
+          direction: { x: 0, y: 1, z: 0 },
+          up: { x: 0, y: 0, z: 1 },
+        },
+      ],
+      42,
+      {
+        leafClusterCount: 4,
+        leafClusterSpread: 0.25,
+      }
+    )
+    const repeatSecondPosition = new THREE.Vector3().setFromMatrixPosition(
+      repeatMatrices[1]
+    )
+
+    expect(repeatSecondPosition.x).toBeCloseTo(secondPosition.x, 5)
+    expect(repeatSecondPosition.y).toBeCloseTo(secondPosition.y, 5)
+    expect(repeatSecondPosition.z).toBeCloseTo(secondPosition.z, 5)
   })
 })

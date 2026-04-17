@@ -14,9 +14,9 @@ describe('buildForestLayout', () => {
       seed: 42,
     })
     expect(layout).toHaveLength(1)
-    expect(layout[0]!.position.x).toBeCloseTo(0, 5)
-    expect(layout[0]!.position.z).toBeCloseTo(0, 5)
-    expect(layout[0]!.scale).toBeCloseTo(1, 5)
+    expect(layout[0].position.x).toBeCloseTo(0, 5)
+    expect(layout[0].position.z).toBeCloseTo(0, 5)
+    expect(layout[0].scale).toBeCloseTo(1, 5)
   })
 
   it('keeps every generated tree inside the requested radius', () => {

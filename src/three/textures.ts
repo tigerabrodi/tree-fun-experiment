@@ -21,9 +21,7 @@ export interface BarkTextures {
   height: THREE.Texture
 }
 
-export async function loadBarkTextures(
-  species: string
-): Promise<BarkTextures> {
+export async function loadBarkTextures(species: string): Promise<BarkTextures> {
   const loader = ktx2Loader!
   const base = `/textures/bark/${species}/${species}`
 
@@ -50,9 +48,7 @@ export async function loadLeafTexture(
   type: 'single' | 'cluster'
 ): Promise<THREE.Texture> {
   const loader = ktx2Loader!
-  const tex = await loader.loadAsync(
-    `/textures/leaves/${species}_${type}.ktx2`
-  )
+  const tex = await loader.loadAsync(`/textures/leaves/${species}_${type}.ktx2`)
   tex.colorSpace = THREE.SRGBColorSpace
   return tex
 }

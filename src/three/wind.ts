@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
 import * as THREE from 'three/webgpu'
 import {
   Fn,
@@ -63,7 +64,7 @@ export function packLeafWindData(
   const packed = new Float32Array(leafMatrices.length * 4)
 
   for (let i = 0; i < leafMatrices.length; i++) {
-    position.setFromMatrixPosition(leafMatrices[i]!)
+    position.setFromMatrixPosition(leafMatrices[i])
     const offset = i * 4
     const normalizedHeight = (position.y - minY) / heightRange
 
@@ -123,41 +124,40 @@ export function createLeafWindRuntime(
       worldPosition.mul(0.19).add(vec3(1.7, 5.2, 3.1))
     )
     const flutterSeed = hashScalar(
-      worldPosition.mul(0.37).add(
-        vec3(
-          instanceFloat.mul(0.013),
-          instanceFloat.mul(0.021),
-          instanceFloat.mul(0.017)
+      worldPosition
+        .mul(0.37)
+        .add(
+          vec3(
+            instanceFloat.mul(0.013),
+            instanceFloat.mul(0.021),
+            instanceFloat.mul(0.017)
+          )
         )
-      )
     )
 
     const globalWave = sin(
-      t.mul(0.65)
+      t
+        .mul(0.65)
         .add(dot(worldPosition, vec3(0.016, 0.0, 0.012)))
         .add(branchSeed.mul(6.28318))
     )
     const branchWave = sin(
-      t.mul(1.45)
+      t
+        .mul(1.45)
         .add(dot(worldPosition, vec3(0.085, 0.055, 0.11)))
         .add(branchSeed.mul(18.0))
     )
     const crossWave = cos(
-      t.mul(1.12)
+      t
+        .mul(1.12)
         .add(dot(worldPosition, vec3(-0.07, 0.04, 0.09)))
         .add(branchSeed.mul(13.0))
     )
     const flutter = sin(
-      t.mul(5.1)
-        .add(flutterSeed.mul(25.0))
-        .add(instanceFloat.mul(0.05))
+      t.mul(5.1).add(flutterSeed.mul(25.0)).add(instanceFloat.mul(0.05))
     )
       .add(
-        cos(
-          t.mul(7.3)
-            .add(flutterSeed.mul(31.0))
-            .add(instanceFloat.mul(0.08))
-        )
+        cos(t.mul(7.3).add(flutterSeed.mul(31.0)).add(instanceFloat.mul(0.08)))
       )
       .mul(0.5)
 

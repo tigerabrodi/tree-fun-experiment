@@ -28,14 +28,16 @@ export function TreeCanvas({
     let isStale = false
     let ctx: SceneContext | null = null
 
-    void createScene(canvas, config, forest, wind, variationSeed).then((scene) => {
-      if (isStale) {
-        scene.dispose()
-        return
+    void createScene(canvas, config, forest, wind, variationSeed).then(
+      (scene) => {
+        if (isStale) {
+          scene.dispose()
+          return
+        }
+        ctx = scene
+        sceneRef.current = scene
       }
-      ctx = scene
-      sceneRef.current = scene
-    })
+    )
 
     return () => {
       isStale = true
@@ -45,7 +47,5 @@ export function TreeCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return (
-    <canvas ref={canvasRef} className="block h-full min-h-0 flex-1" />
-  )
+  return <canvas ref={canvasRef} className="block h-full min-h-0 flex-1" />
 }

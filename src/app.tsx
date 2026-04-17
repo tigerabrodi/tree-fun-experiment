@@ -3,7 +3,7 @@ import { Panel } from '@/components/panel'
 import { TreeCanvas } from '@/components/canvas'
 import { SINGLE_TREE_FOREST, type ForestSettings } from '@/engine/forest'
 import { OAK, type SpeciesConfig } from '@/engine/species'
-import type { SceneContext } from '@/three/scene'
+import type { SceneContext, ViewPreset } from '@/three/scene'
 import { DEFAULT_WIND_SETTINGS, type WindSettings } from '@/three/wind'
 
 function createVariationSeed(): number {
@@ -34,10 +34,13 @@ export function App() {
     []
   )
 
-  const handleChange = useCallback((newConfig: SpeciesConfig) => {
-    setConfig(newConfig)
-    rebuildScene(newConfig, forest, wind, variationSeed)
-  }, [forest, rebuildScene, variationSeed, wind])
+  const handleChange = useCallback(
+    (newConfig: SpeciesConfig) => {
+      setConfig(newConfig)
+      rebuildScene(newConfig, forest, wind, variationSeed)
+    },
+    [forest, rebuildScene, variationSeed, wind]
+  )
 
   const handleForestChange = useCallback(
     (nextForest: ForestSettings) => {
@@ -61,6 +64,10 @@ export function App() {
     rebuildScene(config, forest, wind, nextSeed)
   }, [config, forest, rebuildScene, wind])
 
+  const handleViewPreset = useCallback((preset: ViewPreset) => {
+    sceneRef.current?.setViewPreset(preset)
+  }, [])
+
   return (
     <div className="flex h-dvh bg-[var(--color-bg)]">
       <Panel
@@ -71,6 +78,7 @@ export function App() {
         onForestChange={handleForestChange}
         onWindChange={handleWindChange}
         onRegenerate={handleRegenerate}
+        onViewPreset={handleViewPreset}
       />
       <TreeCanvas
         config={config}
