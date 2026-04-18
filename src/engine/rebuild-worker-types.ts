@@ -1,5 +1,8 @@
 import type { ForestSettings } from './forest'
-import type { SceneRebuildPlan } from './rebuild-plan'
+import type {
+  RebuildPlanBuildMetrics,
+  SceneRebuildPlan,
+} from './rebuild-plan'
 import type { SpeciesConfig } from './species'
 
 export interface RebuildWorkerRequest {
@@ -14,6 +17,7 @@ export interface RebuildWorkerSuccess {
   ok: true
   plan: SceneRebuildPlan
   workerMs: number
+  workerMetrics: RebuildPlanBuildMetrics
 }
 
 export interface RebuildWorkerFailure {

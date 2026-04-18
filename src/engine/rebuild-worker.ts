@@ -1,9 +1,16 @@
 /// <reference lib="webworker" />
 
-import { buildSceneRebuildPlan } from './rebuild-plan'
+import {
+  buildSceneRebuildPlan,
+  cloneSceneRebuildPlan,
+  createRebuildPlanBuildMetrics,
+  createRebuildPlanCache,
+  createSceneRebuildPlanCacheKey,
+} from './rebuild-plan'
 import type { RebuildWorkerRequest, RebuildWorkerResponse } from './rebuild-worker-types'
 
 declare const self: DedicatedWorkerGlobalScope
+const rebuildPlanCache = createRebuildPlanCache()
 
 function collectRebuildPlanTransferables(
   plan: ReturnType<typeof buildSceneRebuildPlan>
@@ -82,14 +89,57 @@ function collectRebuildPlanTransferables(
 self.onmessage = (event: MessageEvent<RebuildWorkerRequest>) => {
   const { id, config, forest, variationSeed } = event.data
   const start = performance.now()
+  const workerMetrics = createRebuildPlanBuildMetrics()
 
   try {
-    const plan = buildSceneRebuildPlan(config, forest, variationSeed)
+    const requestKey = createSceneRebuildPlanCacheKey(
+      config,
+      forest,
+      variationSeed
+    )
+    const cachedPlan = rebuildPlanCache.plans.entries.get(requestKey)
+    let sourcePlan
+
+    if (cachedPlan) {
+      rebuildPlanCache.plans.entries.delete(requestKey)
+      rebuildPlanCache.plans.entries.set(requestKey, cachedPlan)
+      workerMetrics.planCacheHit = true
+      workerMetrics.cacheHits += 1
+      sourcePlan = cachedPlan
+    } else {
+      workerMetrics.cacheMisses += 1
+      sourcePlan = buildSceneRebuildPlan(config, forest, variationSeed, {
+        cache: rebuildPlanCache,
+        metrics: workerMetrics,
+      })
+      rebuildPlanCache.plans.entries.set(requestKey, sourcePlan)
+      while (rebuildPlanCache.plans.entries.size > rebuildPlanCache.plans.limit) {
+        const oldestKey = rebuildPlanCache.plans.entries.keys().next().value
+        if (!oldestKey) {
+          break
+        }
+        rebuildPlanCache.plans.entries.delete(oldestKey)
+      }
+    }
+
+    const cloneStart = performance.now()
+    const plan = cloneSceneRebuildPlan(sourcePlan)
+    workerMetrics.cloneMs = Number((performance.now() - cloneStart).toFixed(2))
     const response: RebuildWorkerResponse = {
       id,
       ok: true,
       plan,
       workerMs: Number((performance.now() - start).toFixed(2)),
+      workerMetrics: {
+        ...workerMetrics,
+        layoutMs: Number(workerMetrics.layoutMs.toFixed(2)),
+        chunkMs: Number(workerMetrics.chunkMs.toFixed(2)),
+        blueprintMs: Number(workerMetrics.blueprintMs.toFixed(2)),
+        lodMs: Number(workerMetrics.lodMs.toFixed(2)),
+        matrixMs: Number(workerMetrics.matrixMs.toFixed(2)),
+        geometryMs: Number(workerMetrics.geometryMs.toFixed(2)),
+        cloneMs: Number(workerMetrics.cloneMs.toFixed(2)),
+      },
     }
     self.postMessage(response, collectRebuildPlanTransferables(plan))
   } catch (error) {

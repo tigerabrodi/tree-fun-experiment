@@ -53,6 +53,14 @@ describe('summarizeSingleForestPerformance', () => {
       blueprints,
       leafInstanceCount: 27,
       workerMs: 11.4,
+      workerBlueprintMs: 4.2,
+      workerLodMs: 1.3,
+      workerMatrixMs: 2.1,
+      workerGeometryMs: 2.8,
+      workerCloneMs: 0.5,
+      workerCacheHits: 6,
+      workerCacheMisses: 4,
+      workerPlanCacheHit: false,
       mainThreadBuildMs: 2.8,
       rebuildMs: 14.2,
       chunkCellSize: 36,
@@ -71,6 +79,14 @@ describe('summarizeSingleForestPerformance', () => {
     expect(stats.leafInstanceCount).toBe(27)
     expect(stats.branchSegmentCount).toBe(18)
     expect(stats.workerMs).toBeCloseTo(11.4)
+    expect(stats.workerBlueprintMs).toBeCloseTo(4.2)
+    expect(stats.workerLodMs).toBeCloseTo(1.3)
+    expect(stats.workerMatrixMs).toBeCloseTo(2.1)
+    expect(stats.workerGeometryMs).toBeCloseTo(2.8)
+    expect(stats.workerCloneMs).toBeCloseTo(0.5)
+    expect(stats.workerCacheHits).toBe(6)
+    expect(stats.workerCacheMisses).toBe(4)
+    expect(stats.workerPlanCacheHit).toBe(false)
     expect(stats.mainThreadBuildMs).toBeCloseTo(2.8)
     expect(stats.rebuildMs).toBeCloseTo(14.2)
   })
@@ -133,6 +149,14 @@ describe('summarizeGiantForestPerformance', () => {
       chunks,
       leafInstanceCount: 31,
       workerMs: 19.6,
+      workerBlueprintMs: 5.4,
+      workerLodMs: 3.2,
+      workerMatrixMs: 4.4,
+      workerGeometryMs: 5.8,
+      workerCloneMs: 0.8,
+      workerCacheHits: 10,
+      workerCacheMisses: 7,
+      workerPlanCacheHit: false,
       mainThreadBuildMs: 3.2,
       rebuildMs: 22.8,
       chunkCellSize: 16,
@@ -152,6 +176,14 @@ describe('summarizeGiantForestPerformance', () => {
     expect(stats.leafInstanceCount).toBe(31)
     expect(stats.branchSegmentCount).toBe(20)
     expect(stats.workerMs).toBeCloseTo(19.6)
+    expect(stats.workerBlueprintMs).toBeCloseTo(5.4)
+    expect(stats.workerLodMs).toBeCloseTo(3.2)
+    expect(stats.workerMatrixMs).toBeCloseTo(4.4)
+    expect(stats.workerGeometryMs).toBeCloseTo(5.8)
+    expect(stats.workerCloneMs).toBeCloseTo(0.8)
+    expect(stats.workerCacheHits).toBe(10)
+    expect(stats.workerCacheMisses).toBe(7)
+    expect(stats.workerPlanCacheHit).toBe(false)
     expect(stats.mainThreadBuildMs).toBeCloseTo(3.2)
     expect(stats.rebuildMs).toBeCloseTo(22.8)
   })
@@ -165,6 +197,14 @@ describe('mergeScenePerformanceStats', () => {
       blueprints: [makeBlueprint(1, 7, 2)],
       leafInstanceCount: 8,
       workerMs: 7.1,
+      workerBlueprintMs: 2.1,
+      workerLodMs: 0.8,
+      workerMatrixMs: 1.7,
+      workerGeometryMs: 1.4,
+      workerCloneMs: 0.3,
+      workerCacheHits: 3,
+      workerCacheMisses: 2,
+      workerPlanCacheHit: false,
       mainThreadBuildMs: 2.4,
       rebuildMs: 9.5,
       chunkCellSize: 24,
@@ -202,6 +242,9 @@ describe('mergeScenePerformanceStats', () => {
     expect(merged.windAnimatedChunkCount).toBe(1)
     expect(merged.windStaticChunkCount).toBe(0)
     expect(merged.workerMs).toBeCloseTo(7.1)
+    expect(merged.workerCloneMs).toBeCloseTo(0.3)
+    expect(merged.workerCacheHits).toBe(3)
+    expect(merged.workerCacheMisses).toBe(2)
     expect(merged.mainThreadBuildMs).toBeCloseTo(2.4)
     expect(merged.leafInstanceCount).toBe(8)
   })

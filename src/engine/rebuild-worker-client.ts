@@ -1,5 +1,5 @@
 import type { ForestSettings } from './forest'
-import type { SceneRebuildPlan } from './rebuild-plan'
+import type { RebuildPlanBuildMetrics, SceneRebuildPlan } from './rebuild-plan'
 import type {
   RebuildWorkerRequest,
   RebuildWorkerResponse,
@@ -14,6 +14,7 @@ interface PendingRequest {
 export interface RebuildWorkerBuildResult {
   plan: SceneRebuildPlan
   workerMs: number
+  workerMetrics: RebuildPlanBuildMetrics
 }
 
 export interface RebuildWorkerClient {
@@ -46,6 +47,7 @@ export function createRebuildWorkerClient(): RebuildWorkerClient {
       request.resolve({
         plan: message.plan,
         workerMs: message.workerMs,
+        workerMetrics: message.workerMetrics,
       })
       return
     }

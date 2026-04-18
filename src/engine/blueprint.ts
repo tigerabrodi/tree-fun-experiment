@@ -67,7 +67,11 @@ export function buildTreeBlueprint(
 export function buildForestVariantBlueprints(
   config: SpeciesConfig,
   layout: Array<ForestInstance>,
-  variationSeed: number
+  variationSeed: number,
+  buildBlueprint: (
+    config: SpeciesConfig,
+    seed: number
+  ) => TreeBlueprint = (nextConfig, seed) => buildTreeBlueprint(nextConfig, seed)
 ): Array<ForestVariantBlueprint> {
   if (layout.length === 0) {
     return []
@@ -105,7 +109,7 @@ export function buildForestVariantBlueprints(
       config: variantConfig,
       seed: variantSeed,
       instances: bucket,
-      blueprint: buildTreeBlueprint(variantConfig, variantSeed),
+      blueprint: buildBlueprint(variantConfig, variantSeed),
     })
   }
 

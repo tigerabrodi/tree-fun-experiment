@@ -57,6 +57,7 @@ import {
 } from './view-frame'
 import { getChunkLeafTexture, getFallbackChunkLodLevel, getInitialChunkLodLevel } from './scene-lod-support'
 import { createTrunkGeometryFromPackedData } from './trunk-geometry-data'
+import { getWorkerPerformanceStats } from './worker-performance'
 
 export type { ViewPreset } from './view-frame'
 export interface SceneContext {
@@ -595,7 +596,7 @@ export async function createScene(
           (count, chunk) => count + chunk.leafInstanceCount,
           0
         ),
-        workerMs: workerBuild.workerMs,
+        ...getWorkerPerformanceStats(workerBuild),
         mainThreadBuildMs: performance.now() - mainThreadBuildStart,
         rebuildMs,
         chunkCellSize: chunkPlan.cellSize,
@@ -716,7 +717,7 @@ export async function createScene(
         layout,
         blueprints,
         leafInstanceCount: leafMatrixElements.length / 16,
-        workerMs: workerBuild.workerMs,
+        ...getWorkerPerformanceStats(workerBuild),
         mainThreadBuildMs: performance.now() - mainThreadBuildStart,
         rebuildMs,
         chunkCellSize: chunkPlan.cellSize,

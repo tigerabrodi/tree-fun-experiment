@@ -35,6 +35,14 @@ export interface StaticScenePerformanceStats {
   leafInstanceCount: number
   branchSegmentCount: number
   workerMs: number
+  workerBlueprintMs: number
+  workerLodMs: number
+  workerMatrixMs: number
+  workerGeometryMs: number
+  workerCloneMs: number
+  workerCacheHits: number
+  workerCacheMisses: number
+  workerPlanCacheHit: boolean
   mainThreadBuildMs: number
   rebuildMs: number
 }
@@ -68,6 +76,14 @@ interface SingleForestPerformanceInput {
   blueprints: Array<TreeBlueprint>
   leafInstanceCount: number
   workerMs: number
+  workerBlueprintMs: number
+  workerLodMs: number
+  workerMatrixMs: number
+  workerGeometryMs: number
+  workerCloneMs: number
+  workerCacheHits: number
+  workerCacheMisses: number
+  workerPlanCacheHit: boolean
   mainThreadBuildMs: number
   rebuildMs: number
   chunkCellSize: number
@@ -83,6 +99,14 @@ interface GiantForestPerformanceInput {
   chunks: Array<ChunkPerformanceSummary>
   leafInstanceCount: number
   workerMs: number
+  workerBlueprintMs: number
+  workerLodMs: number
+  workerMatrixMs: number
+  workerGeometryMs: number
+  workerCloneMs: number
+  workerCacheHits: number
+  workerCacheMisses: number
+  workerPlanCacheHit: boolean
   mainThreadBuildMs: number
   rebuildMs: number
   chunkCellSize: number
@@ -137,6 +161,14 @@ export function summarizeSingleForestPerformance(
     leafInstanceCount: input.leafInstanceCount,
     branchSegmentCount,
     workerMs: roundRebuildMs(input.workerMs),
+    workerBlueprintMs: roundRebuildMs(input.workerBlueprintMs),
+    workerLodMs: roundRebuildMs(input.workerLodMs),
+    workerMatrixMs: roundRebuildMs(input.workerMatrixMs),
+    workerGeometryMs: roundRebuildMs(input.workerGeometryMs),
+    workerCloneMs: roundRebuildMs(input.workerCloneMs),
+    workerCacheHits: input.workerCacheHits,
+    workerCacheMisses: input.workerCacheMisses,
+    workerPlanCacheHit: input.workerPlanCacheHit,
     mainThreadBuildMs: roundRebuildMs(input.mainThreadBuildMs),
     rebuildMs: roundRebuildMs(input.rebuildMs),
   }
@@ -185,6 +217,14 @@ export function summarizeGiantForestPerformance(
     leafInstanceCount: input.leafInstanceCount,
     branchSegmentCount,
     workerMs: roundRebuildMs(input.workerMs),
+    workerBlueprintMs: roundRebuildMs(input.workerBlueprintMs),
+    workerLodMs: roundRebuildMs(input.workerLodMs),
+    workerMatrixMs: roundRebuildMs(input.workerMatrixMs),
+    workerGeometryMs: roundRebuildMs(input.workerGeometryMs),
+    workerCloneMs: roundRebuildMs(input.workerCloneMs),
+    workerCacheHits: input.workerCacheHits,
+    workerCacheMisses: input.workerCacheMisses,
+    workerPlanCacheHit: input.workerPlanCacheHit,
     mainThreadBuildMs: roundRebuildMs(input.mainThreadBuildMs),
     rebuildMs: roundRebuildMs(input.rebuildMs),
   }

@@ -20,8 +20,9 @@ the forest renderer currently uses these systems.
 8. rebuild planning in a worker.
 9. matrix packing in a worker.
 10. trunk geometry packing in a worker.
-11. lazy chunk lod state building.
-12. live performance stats and debug snapshot export.
+11. worker side rebuild caching.
+12. lazy chunk lod state building.
+13. live performance stats and debug snapshot export.
 
 ## what each system does
 
@@ -239,7 +240,53 @@ the worker builds the trunk geometry once. then sends typed array data for posit
 
 the main thread now mostly reconstructs `BufferGeometry` from packed arrays instead of generating the bark mesh from raw segments itself.
 
-### 11. lazy chunk lod state building
+### 11. worker side rebuild caching
+
+file paths.
+
+`src/engine/rebuild-plan.ts`
+
+`src/engine/rebuild-worker.ts`
+
+the worker now caches deterministic rebuild data.
+
+that includes.
+
+the scene rebuild plan itself.
+
+the l system string.
+
+tree blueprints.
+
+lod variants.
+
+packed tree matrices.
+
+packed leaf matrices.
+
+packed trunk geometry.
+
+important detail.
+
+this cache is only for rebuild inputs that produce the same structural result.
+
+for example, changing wind settings should not force the worker to rebuild the whole tree plan.
+
+the worker can clone the cached plan and return it again.
+
+that is why the debug stats now show fields like.
+
+`workerCacheHits`
+
+`workerCacheMisses`
+
+`workerPlanCacheHit`
+
+`workerCloneMs`
+
+when a rebuild uses the exact same structural key, the worker mainly pays clone cost instead of full rebuild cost.
+
+### 12. lazy chunk lod state building
 
 file path.
 
@@ -259,7 +306,7 @@ first time camera visits a new lod for a chunk, there is one small extra build.
 
 after that, it is reused.
 
-### 12. live perf stats and debug snapshot
+### 13. live perf stats and debug snapshot
 
 file paths.
 
@@ -309,6 +356,14 @@ how many gpu compute passes ran this frame.
 
 how much rebuild time was spent in the worker.
 
+`workerBlueprintMs`. `workerLodMs`. `workerMatrixMs`. `workerGeometryMs`. `workerCloneMs`
+
+which worker phase cost time during the rebuild.
+
+`workerCacheHits`. `workerCacheMisses`. `workerPlanCacheHit`
+
+whether the worker reused cached deterministic data.
+
 `mainThreadBuildMs`
 
 how much rebuild time was spent building render objects on the main thread.
@@ -327,11 +382,13 @@ this is the current rebuild order.
 
 1. react calls `rebuildScene`.
 2. textures and worker rebuild planning start in parallel.
-3. worker builds the forest layout. chunk plan. variant plan. lod plan. and packed matrices.
-4. main thread creates materials and three objects from that data.
-5. giant forest builds only the initial chunk lod state for each chunk.
-6. later camera movement can build missing lod states on demand.
-7. per frame. culling runs first. then lod selection. then wind compute for animated chunks.
+3. worker checks whether the rebuild key already exists in the worker cache.
+4. if not cached, worker builds the forest layout. chunk plan. variant plan. lod plan. packed matrices. and packed trunk geometry.
+5. worker clones the cached or freshly built plan for transfer back to the main thread.
+6. main thread creates materials and three objects from that data.
+7. giant forest builds only the initial chunk lod state for each chunk.
+8. later camera movement can build missing lod states on demand.
+9. per frame. culling runs first. then lod selection. then wind compute for animated chunks.
 
 ## what this file does not claim
 
@@ -339,6 +396,5 @@ these are not documented as finished because they are not finished.
 
 1. impostors.
 2. occlusion culling.
-3. worker side trunk geometry creation.
-4. texture atlas streaming.
-5. full async geometry streaming.
+3. texture atlas streaming.
+4. full async geometry streaming.

@@ -110,6 +110,14 @@ export function Panel({
     return value.toFixed(1)
   }
 
+  function formatFlag(value: boolean | null | undefined) {
+    if (typeof value !== 'boolean') {
+      return '—'
+    }
+
+    return value ? 'yes' : 'no'
+  }
+
   async function copyPerformanceJson() {
     const snapshot = window.__treeDebug?.getSnapshot() ?? {
       performance: performanceStats,
@@ -325,6 +333,26 @@ export function Panel({
             <span>Worker ms</span>
             <span className="text-right font-mono text-[var(--color-accent)]">
               {formatDecimal(performanceStats.workerMs)}
+            </span>
+
+            <span>Worker Clone ms</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatDecimal(performanceStats.workerCloneMs)}
+            </span>
+
+            <span>Worker Cache Hits</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.workerCacheHits)}
+            </span>
+
+            <span>Worker Cache Misses</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatInt(performanceStats.workerCacheMisses)}
+            </span>
+
+            <span>Plan Cache</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatFlag(performanceStats.workerPlanCacheHit)}
             </span>
 
             <span>Main Thread ms</span>

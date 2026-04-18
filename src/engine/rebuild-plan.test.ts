@@ -3,6 +3,9 @@ import { GIANT_FOREST_SETTINGS, SINGLE_TREE_FOREST } from './forest'
 import { OAK } from './species'
 import {
   buildSceneRebuildPlan,
+  cloneSceneRebuildPlan,
+  createRebuildPlanBuildMetrics,
+  createRebuildPlanCache,
   flattenNearVariants,
   getPlannedChunkLodStates,
 } from './rebuild-plan'
@@ -125,5 +128,46 @@ describe('buildSceneRebuildPlan', () => {
     const second = buildSceneRebuildPlan(OAK, testForest, 77)
 
     expect(summarizePlan(first)).toEqual(summarizePlan(second))
+  })
+
+  it('reuses cached worker build pieces on repeated builds', () => {
+    const cache = createRebuildPlanCache()
+    const firstMetrics = createRebuildPlanBuildMetrics()
+    const secondMetrics = createRebuildPlanBuildMetrics()
+    const testForest = {
+      ...GIANT_FOREST_SETTINGS,
+      count: 24,
+      radius: 22,
+    }
+
+    buildSceneRebuildPlan(OAK, testForest, 77, {
+      cache,
+      metrics: firstMetrics,
+    })
+    buildSceneRebuildPlan(OAK, testForest, 77, {
+      cache,
+      metrics: secondMetrics,
+    })
+
+    expect(firstMetrics.cacheMisses).toBeGreaterThan(0)
+    expect(secondMetrics.cacheHits).toBeGreaterThan(0)
+    expect(secondMetrics.cacheMisses).toBeLessThan(firstMetrics.cacheMisses)
+  })
+
+  it('clones typed arrays before a worker response is transferred', () => {
+    const plan = buildSceneRebuildPlan(OAK, SINGLE_TREE_FOREST, 42)
+    const clone = cloneSceneRebuildPlan(plan)
+
+    if (plan.kind !== 'single' || clone.kind !== 'single') {
+      throw new Error('expected single tree plans')
+    }
+
+    clone.leafMatrixElements[0] += 1
+    clone.trunkGeometryData[0].position[0] += 1
+
+    expect(clone.leafMatrixElements[0]).not.toBe(plan.leafMatrixElements[0])
+    expect(clone.trunkGeometryData[0].position[0]).not.toBe(
+      plan.trunkGeometryData[0].position[0]
+    )
   })
 })
