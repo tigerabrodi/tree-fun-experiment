@@ -55,6 +55,8 @@ good order.
 - bark textures.
 - leaf textures.
 
+for the field by field guide, read `tuning.md`.
+
 the shipped defaults stay on `ktx2`.
 
 custom textures can be `ktx2`, `png`, `webp`, or `jpg`.

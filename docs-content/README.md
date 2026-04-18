@@ -8,6 +8,7 @@ use this if you want to install the package and put trees into your own app.
 
 - [overview](./library/overview.md)
 - [quickstart](./library/quickstart.md)
+- [tuning](./library/tuning.md)
 - [assets](./library/assets.md)
 - [api](./library/api.md)
 - [leaf texture prompts](./library/leaf-texture-prompts.md)

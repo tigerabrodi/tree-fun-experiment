@@ -265,6 +265,7 @@ consumer facing docs live in `docs-content`.
 - `docs-content/README.md`. start here for package usage.
 - `docs-content/library/overview.md`. what the package is and what it ships with.
 - `docs-content/library/quickstart.md`. install and first render.
+- `docs-content/library/tuning.md`. field by field guide for species, forest, wind, debug, variation, and textures.
 - `docs-content/library/assets.md`. shipped textures and custom asset packs.
 - `docs-content/library/api.md`. public api surface.
 - `docs-content/library/leaf-texture-prompts.md`. prompt patterns for transparent leaf textures.

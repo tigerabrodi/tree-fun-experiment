@@ -6,6 +6,8 @@
 
 creates the renderer and returns the typed library surface.
 
+for field by field tuning of the state objects, read `tuning.md`.
+
 ### `createTreeAssetPack`
 
 creates an asset pack from the shipped defaults plus your overrides.
