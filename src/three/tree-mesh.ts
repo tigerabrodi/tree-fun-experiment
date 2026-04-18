@@ -2,6 +2,9 @@ import * as THREE from 'three/webgpu'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { TreeSegment, LeafPoint } from '@/engine/lsystem'
 import type { SpeciesConfig } from '@/engine/species'
+import { buildLeafMatrices } from './matrices'
+
+export { buildLeafMatrices } from './matrices'
 
 const BRANCH_CONTINUATION_DOT_MIN = 0.985
 const TUBE_RADIAL_SEGMENTS = 8
@@ -30,16 +33,6 @@ function hashSegmentPhase(segment: TreeSegment): number {
     ) * 43758.5453
 
   return hashed - Math.floor(hashed)
-}
-
-function createSeededRandom(seed: number) {
-  let rng = Math.abs(Math.floor(seed)) % 2147483647
-  if (rng === 0) rng = 1
-
-  return function random(): number {
-    rng = (rng * 16807) % 2147483647
-    return rng / 2147483647
-  }
 }
 
 function pointKey(point: TreeSegment['start']): string {
@@ -292,197 +285,6 @@ export function createLeafGeometry(
   return mergeGeometries([plane1, plane2], false)
 }
 
-export function buildLeafMatrices(
-  leaves: Array<LeafPoint>,
-  seed: number,
-  config: Pick<
-    SpeciesConfig,
-    'leafClusterCount' | 'leafClusterSpread' | 'leafClusterStyle'
-  >
-): Array<THREE.Matrix4> {
-  const matrices: Array<THREE.Matrix4> = []
-  const dummy = new THREE.Object3D()
-  const worldUp = new THREE.Vector3(0, 1, 0)
-  const worldRight = new THREE.Vector3(1, 0, 0)
-  const random = createSeededRandom(seed)
-  const clusterCount = Math.max(1, Math.round(config.leafClusterCount))
-  const clusterSpread = Math.max(0, config.leafClusterSpread)
-  const clusterStyle = config.leafClusterStyle
-
-  function getLeafOffset(index: number) {
-    if (index === 0) {
-      return {
-        side: 0,
-        up: 0,
-        forward: 0,
-      }
-    }
-
-    switch (clusterStyle) {
-      case 'classic':
-        return {
-          side: (random() - 0.5) * 2 * clusterSpread,
-          up: (random() - 0.28) * clusterSpread * 1.15,
-          forward: (random() - 0.2) * clusterSpread * 0.8,
-        }
-      case 'broad':
-        return {
-          side: (random() - 0.5) * 2 * clusterSpread * 1.4,
-          up: (random() - 0.18) * clusterSpread * 0.95,
-          forward: (random() - 0.5) * 2 * clusterSpread * 0.42,
-        }
-      case 'airy':
-        return {
-          side: (random() - 0.5) * 2 * clusterSpread * 1.2,
-          up: (random() - 0.08) * clusterSpread * 1.2,
-          forward: (random() - 0.5) * 2 * clusterSpread * 0.32,
-        }
-      case 'blossom':
-        return {
-          side: (random() - 0.5) * 2 * clusterSpread * 1.05,
-          up: (random() - 0.04) * clusterSpread * 1.1,
-          forward: (random() - 0.5) * 2 * clusterSpread * 0.75,
-        }
-      case 'tuft':
-      default:
-        return {
-          side: (random() - 0.5) * 2 * clusterSpread * 0.82,
-          up: (random() - 0.24) * clusterSpread * 0.68,
-          forward: (random() - 0.08) * clusterSpread * 1.15,
-        }
-    }
-  }
-
-  function getLeafScale(index: number) {
-    switch (clusterStyle) {
-      case 'classic':
-        return index === 0 ? 0.95 + random() * 0.2 : 0.68 + random() * 0.42
-      case 'broad':
-        return index === 0 ? 0.8 + random() * 0.1 : 0.46 + random() * 0.2
-      case 'airy':
-        return index === 0 ? 0.84 + random() * 0.12 : 0.42 + random() * 0.28
-      case 'blossom':
-        return index === 0 ? 0.9 + random() * 0.14 : 0.56 + random() * 0.32
-      case 'tuft':
-      default:
-        return index === 0 ? 0.94 + random() * 0.16 : 0.62 + random() * 0.3
-    }
-  }
-
-  function getFacingDirection(dir: THREE.Vector3, basisUp: THREE.Vector3) {
-    switch (clusterStyle) {
-      case 'classic':
-        return dir.clone()
-      case 'broad':
-        return dir.clone().lerp(basisUp, 0.46).normalize()
-      case 'airy':
-        return dir.clone().lerp(basisUp, 0.38).normalize()
-      case 'blossom':
-        return dir.clone().lerp(basisUp, 0.3).normalize()
-      case 'tuft':
-      default:
-        return dir.clone().lerp(basisUp, 0.06).normalize()
-    }
-  }
-
-  function getPitchAngle() {
-    switch (clusterStyle) {
-      case 'classic':
-        return 0
-      case 'broad':
-        return (random() - 0.4) * 0.38
-      case 'airy':
-        return (random() - 0.3) * 0.55
-      case 'blossom':
-        return (random() - 0.45) * 0.45
-      case 'tuft':
-      default:
-        return (random() - 0.5) * 0.2
-    }
-  }
-
-  function getTwistAngle() {
-    switch (clusterStyle) {
-      case 'classic':
-        return random() * Math.PI
-      case 'broad':
-        return (random() - 0.5) * Math.PI * 0.4
-      case 'airy':
-        return (random() - 0.5) * Math.PI * 0.8
-      case 'blossom':
-        return random() * Math.PI
-      case 'tuft':
-      default:
-        return random() * Math.PI
-    }
-  }
-
-  for (const leaf of leaves) {
-    const dir = new THREE.Vector3(
-      leaf.direction.x,
-      leaf.direction.y,
-      leaf.direction.z
-    ).normalize()
-    const localUp = new THREE.Vector3(
-      leaf.up.x,
-      leaf.up.y,
-      leaf.up.z
-    ).normalize()
-    const side = new THREE.Vector3().crossVectors(dir, localUp)
-
-    if (side.lengthSq() < 1e-6) {
-      side.crossVectors(dir, worldUp)
-    }
-    if (side.lengthSq() < 1e-6) {
-      side.crossVectors(dir, worldRight)
-    }
-    side.normalize()
-
-    const basisUp = new THREE.Vector3().crossVectors(side, dir).normalize()
-
-    for (let i = 0; i < clusterCount; i++) {
-      const offset = getLeafOffset(i)
-
-      dummy.position.set(
-        leaf.position.x +
-          side.x * offset.side +
-          basisUp.x * offset.up +
-          dir.x * offset.forward,
-        leaf.position.y +
-          side.y * offset.side +
-          basisUp.y * offset.up +
-          dir.y * offset.forward,
-        leaf.position.z +
-          side.z * offset.side +
-          basisUp.z * offset.up +
-          dir.z * offset.forward
-      )
-
-      const facing = getFacingDirection(dir, basisUp)
-      const quat = new THREE.Quaternion().setFromUnitVectors(worldUp, facing)
-      const pitchAxis = side.clone().normalize()
-      const pitch = new THREE.Quaternion().setFromAxisAngle(
-        pitchAxis,
-        getPitchAngle()
-      )
-      const twist = new THREE.Quaternion().setFromAxisAngle(
-        facing,
-        getTwistAngle()
-      )
-      quat.multiply(pitch)
-      quat.multiply(twist)
-      dummy.quaternion.copy(quat)
-
-      const s = getLeafScale(i)
-      dummy.scale.setScalar(s)
-      dummy.updateMatrix()
-      matrices.push(dummy.matrix.clone())
-    }
-  }
-
-  return matrices
-}
-
 export function buildLeafMeshFromMatrices(
   geometry: THREE.BufferGeometry,
   matrices: Array<THREE.Matrix4>,
@@ -495,6 +297,22 @@ export function buildLeafMeshFromMatrices(
   }
 
   mesh.instanceMatrix.needsUpdate = true
+  return mesh
+}
+
+export function buildInstancedMeshFromMatrixElements(
+  geometry: THREE.BufferGeometry,
+  matrixElements: Float32Array,
+  material: THREE.Material
+): THREE.InstancedMesh {
+  const instanceCount = matrixElements.length / 16
+  const mesh = new THREE.InstancedMesh(geometry, material, instanceCount)
+
+  if (instanceCount > 0) {
+    mesh.instanceMatrix.array.set(matrixElements)
+    mesh.instanceMatrix.needsUpdate = true
+  }
+
   return mesh
 }
 

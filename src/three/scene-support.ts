@@ -1,4 +1,3 @@
-import type { ForestChunk } from '@/engine/chunks'
 import type { SpeciesConfig } from '@/engine/species'
 import * as THREE from 'three/webgpu'
 import { loadBarkTextures, loadLeafTexture } from './textures'
@@ -64,15 +63,4 @@ export async function getLeafTexture(
     leafCache.set(key, await loadLeafTexture(species, type))
   }
   return leafCache.get(key)!
-}
-
-export function createChunkVariationSeed(
-  chunk: ForestChunk,
-  variationSeed: number
-): number {
-  return (
-    (Math.imul(chunk.gridX ^ variationSeed, 73856093) ^
-      Math.imul(chunk.gridZ ^ variationSeed, 19349663)) >>>
-      0 || 1
-  )
 }

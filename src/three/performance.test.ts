@@ -3,6 +3,7 @@ import type { ForestInstance } from '../engine/forest'
 import type { ForestVariantBlueprint, TreeBlueprint } from '../engine/blueprint'
 import { OAK } from '../engine/species'
 import {
+  type ChunkPerformanceSummary,
   mergeScenePerformanceStats,
   summarizeGiantForestPerformance,
   summarizeSingleForestPerformance,
@@ -51,6 +52,8 @@ describe('summarizeSingleForestPerformance', () => {
       layout,
       blueprints,
       leafInstanceCount: 27,
+      workerMs: 11.4,
+      mainThreadBuildMs: 2.8,
       rebuildMs: 14.2,
       chunkCellSize: 36,
     })
@@ -67,6 +70,8 @@ describe('summarizeSingleForestPerformance', () => {
     expect(stats.leafAnchorCount).toBe(9)
     expect(stats.leafInstanceCount).toBe(27)
     expect(stats.branchSegmentCount).toBe(18)
+    expect(stats.workerMs).toBeCloseTo(11.4)
+    expect(stats.mainThreadBuildMs).toBeCloseTo(2.8)
     expect(stats.rebuildMs).toBeCloseTo(14.2)
   })
 })
@@ -88,7 +93,7 @@ describe('summarizeGiantForestPerformance', () => {
         blueprint: makeBlueprint(22, 8, 5),
       },
     ]
-    const chunks = [
+    const chunks: Array<ChunkPerformanceSummary> = [
       {
         id: '0:0',
         treeCount: 2,
@@ -101,6 +106,8 @@ describe('summarizeGiantForestPerformance', () => {
         cellSize: 16,
         centerX: 0,
         centerZ: 0,
+        visible: true,
+        lodLevel: 'near',
       },
       {
         id: '1:0',
@@ -114,6 +121,8 @@ describe('summarizeGiantForestPerformance', () => {
         cellSize: 16,
         centerX: 16,
         centerZ: 0,
+        visible: true,
+        lodLevel: 'mid',
       },
     ]
 
@@ -123,6 +132,8 @@ describe('summarizeGiantForestPerformance', () => {
       variants,
       chunks,
       leafInstanceCount: 31,
+      workerMs: 19.6,
+      mainThreadBuildMs: 3.2,
       rebuildMs: 22.8,
       chunkCellSize: 16,
     })
@@ -140,6 +151,8 @@ describe('summarizeGiantForestPerformance', () => {
     expect(stats.leafAnchorCount).toBe(11)
     expect(stats.leafInstanceCount).toBe(31)
     expect(stats.branchSegmentCount).toBe(20)
+    expect(stats.workerMs).toBeCloseTo(19.6)
+    expect(stats.mainThreadBuildMs).toBeCloseTo(3.2)
     expect(stats.rebuildMs).toBeCloseTo(22.8)
   })
 })
@@ -151,6 +164,8 @@ describe('mergeScenePerformanceStats', () => {
       layout: [makeInstance(1)],
       blueprints: [makeBlueprint(1, 7, 2)],
       leafInstanceCount: 8,
+      workerMs: 7.1,
+      mainThreadBuildMs: 2.4,
       rebuildMs: 9.5,
       chunkCellSize: 24,
     })
@@ -186,6 +201,8 @@ describe('mergeScenePerformanceStats', () => {
     expect(merged.ultraFarChunkCount).toBe(0)
     expect(merged.windAnimatedChunkCount).toBe(1)
     expect(merged.windStaticChunkCount).toBe(0)
+    expect(merged.workerMs).toBeCloseTo(7.1)
+    expect(merged.mainThreadBuildMs).toBeCloseTo(2.4)
     expect(merged.leafInstanceCount).toBe(8)
   })
 })

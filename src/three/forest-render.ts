@@ -1,27 +1,26 @@
 import type { ForestInstance } from '@/engine/forest'
-import type { ForestChunk } from '@/engine/chunks'
-import type { ForestVariantBlueprint, TreeBlueprint } from '@/engine/blueprint'
 import {
-  buildTreeLodVariant,
   type TreeLodLevel,
-  type TreeLodVariant,
+  type PlannedChunkLodState,
+  type PlannedForestLodVariant,
 } from '@/engine/lod'
+import type { ForestChunk } from '@/engine/chunks'
+import type { TreeBlueprint } from '@/engine/blueprint'
 import * as THREE from 'three/webgpu'
 import { createLeafMaterial } from './materials'
 import {
-  buildLeafMatrices,
-  buildLeafMeshFromMatrices,
-  buildTrunkGeometry,
+  buildInstancedMeshFromMatrixElements,
   createLeafGeometry,
 } from './tree-mesh'
 import {
-  createLeafWindRuntime,
+  createLeafWindRuntimeFromMatrixElements,
   getWindLodProfile,
   scaleWindSettings,
   type LeafWindRuntime,
   type WindSettings,
 } from './wind'
 import type { ChunkPerformanceSummary } from './performance'
+import { createTrunkGeometryFromPackedData } from './trunk-geometry-data'
 
 export interface ChunkLodRenderState {
   group: THREE.Group
@@ -34,7 +33,9 @@ export interface ForestSharedRenderVariant {
   seed: number
   instances: Array<ForestInstance>
   blueprint: TreeBlueprint
-  renderConfig: TreeLodVariant['renderConfig']
+  renderConfig: PlannedForestLodVariant['renderConfig']
+  treeMatrixElements?: Float32Array
+  trunkGeometryData?: PlannedForestLodVariant['trunkGeometryData']
 }
 
 export function finalizeInstancedBounds(
@@ -70,49 +71,29 @@ export function createTreeMatrix(instance: ForestInstance): THREE.Matrix4 {
 export function buildSharedForestGroup(
   variants: Array<ForestSharedRenderVariant>,
   barkMaterial: THREE.Material
-): { group: THREE.Group; leafMatrices: Array<THREE.Matrix4> } {
+): THREE.Group {
   const group = new THREE.Group()
-  const leafMatrices: Array<THREE.Matrix4> = []
 
   for (const variant of variants) {
-    const trunkGeometry = buildTrunkGeometry(variant.blueprint.segments, {
-      radialSegments: variant.renderConfig.trunkRadialSegments,
-    })
-    const trunkMesh = new THREE.InstancedMesh(
+    const trunkGeometry = variant.trunkGeometryData
+      ? createTrunkGeometryFromPackedData(variant.trunkGeometryData)
+      : new THREE.BufferGeometry()
+    const trunkMesh = buildInstancedMeshFromMatrixElements(
       trunkGeometry,
+      variant.treeMatrixElements ?? new Float32Array(),
       barkMaterial,
-      variant.instances.length
     )
     trunkMesh.userData.treeRole = 'wood'
-    const treeMatrices = variant.instances.map((item) => createTreeMatrix(item))
-
-    for (let i = 0; i < treeMatrices.length; i++) {
-      trunkMesh.setMatrixAt(i, treeMatrices[i])
-    }
-
-    trunkMesh.instanceMatrix.needsUpdate = true
     finalizeInstancedBounds(trunkMesh)
     group.add(trunkMesh)
-
-    const baseLeafMatrices = buildLeafMatrices(
-      variant.blueprint.leaves,
-      variant.seed,
-      variant.renderConfig
-    )
-
-    for (const treeMatrix of treeMatrices) {
-      for (const baseLeafMatrix of baseLeafMatrices) {
-        leafMatrices.push(treeMatrix.clone().multiply(baseLeafMatrix))
-      }
-    }
   }
 
-  return { group, leafMatrices }
+  return group
 }
 
 export function buildChunkSummary(
   chunk: ForestChunk,
-  variants: Array<ForestVariantBlueprint>,
+  variants: Array<Pick<ForestSharedRenderVariant, 'instances' | 'blueprint'>>,
   leafInstanceCount: number
 ): ChunkPerformanceSummary {
   const treeCount = chunk.instances.length
@@ -139,66 +120,55 @@ export function buildChunkSummary(
     cellSize: chunk.cellSize,
     centerX: chunk.center.x,
     centerZ: chunk.center.z,
+    visible: true,
+    lodLevel: 'near',
   }
-}
-
-export function buildChunkLodVariants(
-  variants: Array<ForestVariantBlueprint>,
-  level: TreeLodLevel
-): Array<ForestSharedRenderVariant> {
-  return variants.map((variant) => {
-    const lodVariant = buildTreeLodVariant(variant.blueprint, level)
-
-    return {
-      seed: variant.seed,
-      instances: variant.instances,
-      blueprint: lodVariant.blueprint,
-      renderConfig: lodVariant.renderConfig,
-    }
-  })
 }
 
 export function buildChunkLodRenderState(
   level: TreeLodLevel,
-  variants: Array<ForestSharedRenderVariant>,
+  lodState: PlannedChunkLodState,
   barkMaterial: THREE.Material,
   leafTexture: THREE.Texture,
   wind: WindSettings
 ): ChunkLodRenderState {
   const group = new THREE.Group()
-  const sharedForest = buildSharedForestGroup(variants, barkMaterial)
+  const sharedForestGroup = buildSharedForestGroup(lodState.variants, barkMaterial)
 
-  group.add(sharedForest.group)
+  group.add(sharedForestGroup)
 
   const windProfile = getWindLodProfile(level)
-  const leafWindRuntime = createLeafWindRuntime(
-    sharedForest.leafMatrices,
+  const leafWindRuntime = createLeafWindRuntimeFromMatrixElements(
+    lodState.leafMatrixElements,
     scaleWindSettings(wind, windProfile),
     {
       animate: windProfile.animate,
     }
   )
 
-  if (leafWindRuntime && sharedForest.leafMatrices.length > 0) {
+  if (leafWindRuntime && lodState.leafMatrixElements.length > 0) {
     const leafMaterial = createLeafMaterial(
       leafTexture,
       leafWindRuntime.renderOffsetBuffer,
       {
-        alphaTest: variants[0].renderConfig.leafAlphaTest,
+        alphaTest: lodState.variants[0].renderConfig.leafAlphaTest,
       }
     )
     const leafGeometry = createLeafGeometry(
-      variants[0].renderConfig.leafSize,
-      variants[0].renderConfig.leafGeometryType
+      lodState.variants[0].renderConfig.leafSize,
+      lodState.variants[0].renderConfig.leafGeometryType
     )
-    const leafMesh = buildLeafMeshFromMatrices(
+    const leafMesh = buildInstancedMeshFromMatrixElements(
       leafGeometry,
-      sharedForest.leafMatrices,
+      lodState.leafMatrixElements,
       leafMaterial
     )
     leafMesh.userData.treeRole = 'leaf'
     leafMesh.frustumCulled = true
-    finalizeInstancedBounds(leafMesh, variants[0].renderConfig.leafSize * 1.6)
+    finalizeInstancedBounds(
+      leafMesh,
+      lodState.variants[0].renderConfig.leafSize * 1.6
+    )
     group.add(leafMesh)
   }
 
@@ -207,7 +177,7 @@ export function buildChunkLodRenderState(
   return {
     group,
     leafWindRuntime,
-    leafInstanceCount: sharedForest.leafMatrices.length,
+    leafInstanceCount: lodState.leafMatrixElements.length / 16,
     windMode: leafWindRuntime?.windMode ?? 'static',
   }
 }

@@ -1,5 +1,6 @@
 import type { ForestInstance, ForestMode } from '@/engine/forest'
-import type { ForestVariantBlueprint, TreeBlueprint } from '@/engine/blueprint'
+import type { TreeBlueprint } from '@/engine/blueprint'
+import type { TreeLodLevel } from '@/engine/lod'
 import type { DebugViewSettings } from './debug'
 
 export interface ChunkPerformanceSummary {
@@ -14,6 +15,8 @@ export interface ChunkPerformanceSummary {
   cellSize: number
   centerX: number
   centerZ: number
+  visible: boolean
+  lodLevel: TreeLodLevel | null
 }
 
 export interface StaticScenePerformanceStats {
@@ -31,6 +34,8 @@ export interface StaticScenePerformanceStats {
   leafAnchorCount: number
   leafInstanceCount: number
   branchSegmentCount: number
+  workerMs: number
+  mainThreadBuildMs: number
   rebuildMs: number
 }
 
@@ -62,6 +67,8 @@ interface SingleForestPerformanceInput {
   layout: Array<ForestInstance>
   blueprints: Array<TreeBlueprint>
   leafInstanceCount: number
+  workerMs: number
+  mainThreadBuildMs: number
   rebuildMs: number
   chunkCellSize: number
 }
@@ -69,9 +76,14 @@ interface SingleForestPerformanceInput {
 interface GiantForestPerformanceInput {
   forestMode: ForestMode
   layout: Array<ForestInstance>
-  variants: Array<ForestVariantBlueprint>
+  variants: Array<{
+    instances: Array<ForestInstance>
+    blueprint: TreeBlueprint
+  }>
   chunks: Array<ChunkPerformanceSummary>
   leafInstanceCount: number
+  workerMs: number
+  mainThreadBuildMs: number
   rebuildMs: number
   chunkCellSize: number
 }
@@ -124,6 +136,8 @@ export function summarizeSingleForestPerformance(
     leafAnchorCount,
     leafInstanceCount: input.leafInstanceCount,
     branchSegmentCount,
+    workerMs: roundRebuildMs(input.workerMs),
+    mainThreadBuildMs: roundRebuildMs(input.mainThreadBuildMs),
     rebuildMs: roundRebuildMs(input.rebuildMs),
   }
 }
@@ -170,6 +184,8 @@ export function summarizeGiantForestPerformance(
     leafAnchorCount,
     leafInstanceCount: input.leafInstanceCount,
     branchSegmentCount,
+    workerMs: roundRebuildMs(input.workerMs),
+    mainThreadBuildMs: roundRebuildMs(input.mainThreadBuildMs),
     rebuildMs: roundRebuildMs(input.rebuildMs),
   }
 }

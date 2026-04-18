@@ -1,6 +1,8 @@
-import type { TreeBlueprint } from './blueprint'
+import type { ForestInstance } from './forest'
+import type { ForestVariantBlueprint, TreeBlueprint } from './blueprint'
 import type { TreeSegment, LeafPoint } from './lsystem'
 import type { SpeciesConfig } from './species'
+import type { PackedTrunkGeometryData } from '@/three/trunk-geometry-data'
 
 export type TreeLodLevel = 'near' | 'mid' | 'far' | 'ultraFar'
 
@@ -29,6 +31,20 @@ export interface TreeLodVariant {
   level: TreeLodLevel
   blueprint: TreeBlueprint
   renderConfig: TreeLodRenderConfig
+}
+
+export interface PlannedForestLodVariant {
+  seed: number
+  instances: Array<ForestInstance>
+  blueprint: TreeBlueprint
+  renderConfig: TreeLodRenderConfig
+  treeMatrixElements?: Float32Array
+  trunkGeometryData?: PackedTrunkGeometryData
+}
+
+export interface PlannedChunkLodState {
+  variants: Array<PlannedForestLodVariant>
+  leafMatrixElements: Float32Array
 }
 
 interface TreeLodSettings {
@@ -208,4 +224,20 @@ export function buildTreeLodVariant(
     },
     renderConfig: createTreeLodRenderConfig(blueprint.config, settings),
   }
+}
+
+export function buildForestLodVariants(
+  variants: Array<ForestVariantBlueprint>,
+  level: TreeLodLevel
+): Array<PlannedForestLodVariant> {
+  return variants.map((variant) => {
+    const lodVariant = buildTreeLodVariant(variant.blueprint, level)
+
+    return {
+      seed: variant.seed,
+      instances: variant.instances,
+      blueprint: lodVariant.blueprint,
+      renderConfig: lodVariant.renderConfig,
+    }
+  })
 }

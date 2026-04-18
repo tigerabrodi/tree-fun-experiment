@@ -322,6 +322,16 @@ export function Panel({
               {formatInt(performanceStats.triangles)}
             </span>
 
+            <span>Worker ms</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatDecimal(performanceStats.workerMs)}
+            </span>
+
+            <span>Main Thread ms</span>
+            <span className="text-right font-mono text-[var(--color-accent)]">
+              {formatDecimal(performanceStats.mainThreadBuildMs)}
+            </span>
+
             <span>Rebuild ms</span>
             <span className="text-right font-mono text-[var(--color-accent)]">
               {formatDecimal(performanceStats.rebuildMs)}

@@ -78,6 +78,7 @@ you need a browser with webgpu support.
 - `src/three`. mesh generation, materials, textures, scene setup, wind.
 - `src/components`. react ui panel and canvas wrapper.
 - `docs`. focused notes on l systems, instancing, webgpu, and tsl.
+  it also has a current performance systems note.
 
 ## useful docs in this repo
 
@@ -85,3 +86,4 @@ you need a browser with webgpu support.
 - `docs/instanced-rendering.md`. why instancing matters here.
 - `docs/webgpu-vs-webgl.md`. what webgpu gives this project.
 - `docs/webgpu-tsl-reference.md`. lower level three tsl and webgpu notes.
+- `docs/performance-systems.md`. current perf systems that are already built.

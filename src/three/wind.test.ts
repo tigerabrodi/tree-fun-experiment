@@ -2,9 +2,11 @@ import * as THREE from 'three/webgpu'
 import { describe, expect, it } from 'vitest'
 import {
   createLeafWindRuntime,
+  createLeafWindRuntimeFromMatrixElements,
   directionDegreesToVector,
   getWindLodProfile,
   packLeafWindData,
+  packLeafWindDataFromMatrixElements,
   scaleWindSettings,
 } from './wind'
 
@@ -34,6 +36,19 @@ describe('packLeafWindData', () => {
     expect(packed[3]).toBeLessThan(packed[7])
     expect(packed[3]).toBeGreaterThanOrEqual(0.18)
     expect(packed[7]).toBeLessThanOrEqual(1)
+  })
+
+  it('matches the packed matrix element path', () => {
+    const lowLeaf = new THREE.Matrix4().makeTranslation(1, 2, 3)
+    const highLeaf = new THREE.Matrix4().makeTranslation(-4, 10, 6)
+    const matrixElements = new Float32Array([
+      ...lowLeaf.elements,
+      ...highLeaf.elements,
+    ])
+
+    expect(Array.from(packLeafWindDataFromMatrixElements(matrixElements))).toEqual(
+      Array.from(packLeafWindData([lowLeaf, highLeaf]))
+    )
   })
 })
 
@@ -82,6 +97,25 @@ describe('createLeafWindRuntime', () => {
     const leaf = new THREE.Matrix4().makeTranslation(0, 2, 0)
     const runtime = createLeafWindRuntime(
       [leaf],
+      {
+        strength: 0.4,
+        speed: 1,
+        direction: 28,
+      },
+      {
+        animate: false,
+      }
+    )
+
+    expect(runtime).not.toBeNull()
+    expect(runtime?.computeNode).toBeNull()
+    expect(runtime?.windMode).toBe('static')
+  })
+
+  it('can build a static wind runtime from packed matrix elements', () => {
+    const leaf = new THREE.Matrix4().makeTranslation(0, 2, 0)
+    const runtime = createLeafWindRuntimeFromMatrixElements(
+      new Float32Array(leaf.elements),
       {
         strength: 0.4,
         speed: 1,
