@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { ForestSettings } from '@/engine/forest'
-import { createScene, type SceneContext } from '@/three/scene'
+import { createTreeRenderer, type TreeRenderer } from '@/lib'
 import type { SpeciesConfig } from '@/engine/species'
 import type { WindSettings } from '@/three/wind'
 import type { ScenePerformanceStats } from '@/three/performance'
@@ -12,7 +12,7 @@ interface CanvasProps {
   wind: WindSettings
   debugView: DebugViewSettings
   variationSeed: number
-  sceneRef: React.RefObject<SceneContext | null>
+  sceneRef: React.RefObject<TreeRenderer | null>
   onPerformanceStatsChange?: (stats: ScenePerformanceStats) => void
 }
 
@@ -32,17 +32,17 @@ export function TreeCanvas({
     if (!canvas) return
 
     let isStale = false
-    let ctx: SceneContext | null = null
+    let ctx: TreeRenderer | null = null
 
-    void createScene(
+    void createTreeRenderer({
       canvas,
-      config,
+      species: config,
       forest,
       wind,
       variationSeed,
       debugView,
-      onPerformanceStatsChange
-    ).then((scene) => {
+      onPerformanceStatsChange,
+    }).then((scene) => {
       if (isStale) {
         scene.dispose()
         return

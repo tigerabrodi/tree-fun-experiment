@@ -5,6 +5,7 @@ import type {
   RebuildWorkerResponse,
 } from './rebuild-worker-types'
 import type { SpeciesConfig } from './species'
+import RebuildWorker from './rebuild-worker.ts?worker&inline'
 
 interface PendingRequest {
   resolve: (result: RebuildWorkerBuildResult) => void
@@ -27,9 +28,7 @@ export interface RebuildWorkerClient {
 }
 
 export function createRebuildWorkerClient(): RebuildWorkerClient {
-  const worker = new Worker(new URL('./rebuild-worker.ts', import.meta.url), {
-    type: 'module',
-  })
+  const worker = new RebuildWorker()
   let nextId = 1
   const pending = new Map<number, PendingRequest>()
 

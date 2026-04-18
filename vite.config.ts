@@ -4,6 +4,10 @@ import path from 'path'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  assetsInclude: ['**/*.ktx2'],
+  build: {
+    assetsInlineLimit: 0,
+  },
   plugins: [tailwindcss(), react()],
   resolve: {
     alias: {

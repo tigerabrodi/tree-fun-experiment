@@ -1,12 +1,12 @@
 # tree fun experiment
 
-this is a procedural tree playground built with react, three.js, and webgpu.
+this is a procedural tree playground and in repo webgpu tree library built with react, three.js, and webgpu.
 
 it generates trees from l systems. an l system is a rule based string generator. the string is turned into branch instructions. those instructions are then turned into trunk segments, branches, and leaf positions.
 
 the project currently has 5 species. oak. pine. birch. maple. sakura.
 
-it also has giant forest mode, gpu leaf wind, ktx2 bark textures from fal, chunked forest rendering, and a live control panel for structure, forest size, and wind.
+it also has giant forest mode, gpu leaf wind, ktx2 bark textures from fal, chunked forest rendering, a typed library entry, and a live control panel for structure, forest size, and wind.
 
 ## what is in here
 
@@ -20,7 +20,138 @@ it also has giant forest mode, gpu leaf wind, ktx2 bark textures from fal, chunk
 - 4 chunk lod levels. near. mid. far. ultra far.
 - wind lod so far chunks stop paying full wind cost.
 - worker based rebuild planning and geometry packing.
+- a public library entry at `src/lib/index.ts`.
+- default ktx2 texture assets plus custom asset pack support for `ktx2`, `png`, `webp`, and `jpg`.
 - live perf stats and debug json export.
+
+## install and use it
+
+install the library and `three`.
+
+```bash
+npm i @tigerabrodioss/l-trees three
+```
+
+create a canvas and build a renderer.
+
+```ts
+import {
+  OAK,
+  GIANT_FOREST_SETTINGS,
+  createTreeRenderer,
+} from '@tigerabrodioss/l-trees'
+
+const canvas = document.querySelector('canvas')!
+
+const trees = await createTreeRenderer({
+  canvas,
+  species: OAK,
+  forest: GIANT_FOREST_SETTINGS,
+})
+
+trees.setViewPreset('quarter')
+```
+
+change things later.
+
+```ts
+import { MAPLE } from '@tigerabrodioss/l-trees'
+
+await trees.setSpecies(MAPLE)
+await trees.setForest({
+  mode: 'giant',
+  count: 180,
+  radius: 60,
+})
+await trees.setWind({
+  strength: 0.42,
+  speed: 1.1,
+  direction: 35,
+})
+await trees.regenerate()
+```
+
+read live perf and debug data.
+
+```ts
+const snapshot = trees.getPerformanceSnapshot()
+console.log(snapshot.performance)
+console.log(snapshot.chunks)
+```
+
+when you are done.
+
+```ts
+trees.dispose()
+```
+
+## use shipped textures or your own
+
+the default presets work out of the box with the shipped `ktx2` textures.
+
+if you want your own textures, use `createTreeAssetPack`.
+
+```ts
+import {
+  OAK,
+  createTreeAssetPack,
+  createTreeRenderer,
+} from '@tigerabrodioss/l-trees'
+
+const assets = createTreeAssetPack({
+  bark: {
+    oak: {
+      basecolor: '/my-pack/oak_basecolor.webp',
+    },
+  },
+  leaves: {
+    willow: {
+      single: '/my-pack/willow_single.png',
+      cluster: '/my-pack/willow_cluster.jpg',
+    },
+  },
+})
+
+await createTreeRenderer({
+  canvas,
+  species: {
+    ...OAK,
+    name: 'willow',
+    leafTexture: 'willow',
+  },
+  assets,
+})
+```
+
+the shipped pack stays on `ktx2`.
+
+custom textures can be `ktx2`, `png`, `webp`, or `jpg`.
+
+## quick procedural tree tips
+
+- use lower `branchAngle` for a more upright tree.
+- use higher `branchAngle` for a wider crown.
+- use higher `angleVariance` if the tree feels too mirrored or too perfect.
+- use lower `lengthDecay` if you want branches to stay longer deeper into the tree.
+- use lower `radiusDecay` if the tree feels too thin too fast.
+- use higher `leafDensity` for a fuller canopy.
+- use lower `leafDensity` if you want more branch visibility and a lighter crown.
+- use `SINGLE_TREE_FOREST` for hero trees and close shots.
+- use `GIANT_FOREST_SETTINGS` when you want the full chunking and lod path.
+
+## making your own leaf textures
+
+if you want to generate your own leaf textures, keep the subject centered, keep the background transparent, and avoid long branches or big empty areas.
+
+good prompt shape.
+
+```text
+create one isolated [leaf or cluster type] for a game texture. centered. top down view. realistic shape. clean readable silhouette. transparent background. no extra leaves outside the main subject. no long branch. no drop shadow. no border. no text.
+```
+
+that pattern works well for image generation tools, including openai image generation models like `gpt-image-1.5`.
+
+for more prompt examples, see `docs-content/library/leaf-texture-prompts.md`.
 
 ## how it works
 
@@ -80,20 +211,47 @@ build for production.
 bun run build
 ```
 
+build the library output.
+
+```bash
+bun run build:lib
+```
+
+the scoped package name is now.
+
+```bash
+@tigerabrodioss/l-trees
+```
+
 you need a browser with webgpu support.
 
 ## project map
 
 - `src/engine`. l system rules, turtle building, forest layout, chunk planning, lod planning, and worker rebuild planning.
 - `src/three`. mesh generation, materials, textures, scene setup, culling, lod, wind, and perf reporting.
+- `src/lib`. public typed library api.
 - `src/components`. react ui panel and canvas wrapper.
 - `docs`. focused notes on l systems, instancing, webgpu, and tsl.
   it also has a current performance systems note.
 
 ## useful docs in this repo
 
+consumer facing docs live in `docs-content`.
+
+- `docs-content/README.md`. start here for package usage.
+- `docs-content/library/overview.md`. what the package is and what it ships with.
+- `docs-content/library/quickstart.md`. install and first render.
+- `docs-content/library/assets.md`. shipped textures and custom asset packs.
+- `docs-content/library/api.md`. public api surface.
+- `docs-content/library/leaf-texture-prompts.md`. prompt patterns for transparent leaf textures.
+
+technical and internal notes stay in `docs`.
+
 - `docs/l-system-trees.md`. how the tree grammar and turtle builder work.
 - `docs/instanced-rendering.md`. why instancing matters here.
 - `docs/webgpu-vs-webgl.md`. what webgpu gives this project.
 - `docs/webgpu-tsl-reference.md`. lower level three tsl and webgpu notes.
 - `docs/performance-systems.md`. current perf systems that are already built.
+- `docs/library-usage.md`. current library api and custom asset usage.
+- `docs/leaf-texture-prompts.md`. prompt patterns for making transparent leaf textures.
+- `docs/webgpu-tree-library-plan.md`. current library direction.

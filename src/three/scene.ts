@@ -1,4 +1,5 @@
 import { type ForestSettings } from '@/engine/forest'
+import { DEFAULT_TREE_ASSET_PACK, type TreeAssetPack } from '@/lib/assets'
 import {
   TREE_LOD_LEVELS,
   type TreeLodLevel,
@@ -107,7 +108,8 @@ export async function createScene(
   initialWind: WindSettings,
   initialVariationSeed: number,
   initialDebugView: DebugViewSettings,
-  onPerformanceStatsChange?: (stats: ScenePerformanceStats) => void
+  onPerformanceStatsChange?: (stats: ScenePerformanceStats) => void,
+  assetPack: TreeAssetPack = DEFAULT_TREE_ASSET_PACK
 ): Promise<SceneContext> {
   // Renderer
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true })
@@ -118,7 +120,7 @@ export async function createScene(
   await renderer.init()
 
   // KTX2
-  initKTX2Loader(renderer)
+  initKTX2Loader(renderer, assetPack.transcoderPath)
 
   // Scene
   const scene = new THREE.Scene()
@@ -486,9 +488,9 @@ export async function createScene(
     const nextChunkRenderStates: Array<ChunkRenderState> = []
     const [barkTextures, clusterLeafTex, singleLeafTex, workerBuild] =
       await Promise.all([
-      getBarkTextures(config.barkTexture),
-      getLeafTexture(config.leafTexture, 'cluster'),
-      getLeafTexture(config.leafTexture, 'single'),
+      getBarkTextures(config.barkTexture, assetPack),
+      getLeafTexture(config.leafTexture, 'cluster', assetPack),
+      getLeafTexture(config.leafTexture, 'single', assetPack),
       rebuildWorker.build(config, forest, variationSeed),
     ])
 

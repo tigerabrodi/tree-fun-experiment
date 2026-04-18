@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState } from 'react'
+import { type TreeRenderer, type ViewPreset } from '@/lib'
 import { Panel } from '@/components/panel'
 import { TreeCanvas } from '@/components/canvas'
 import { SINGLE_TREE_FOREST, type ForestSettings } from '@/engine/forest'
 import { OAK, type SpeciesConfig } from '@/engine/species'
-import type { SceneContext, ViewPreset } from '@/three/scene'
 import { DEFAULT_WIND_SETTINGS, type WindSettings } from '@/three/wind'
 import type { ScenePerformanceStats } from '@/three/performance'
 import {
@@ -26,7 +26,7 @@ export function App() {
   const [canvasKey, setCanvasKey] = useState(0)
   const [performanceStats, setPerformanceStats] =
     useState<ScenePerformanceStats | null>(null)
-  const sceneRef = useRef<SceneContext | null>(null)
+  const sceneRef = useRef<TreeRenderer | null>(null)
   const perfRecoveryTriggeredRef = useRef(false)
 
   const handlePerformanceStatsChange = useCallback(
@@ -61,12 +61,12 @@ export function App() {
       nextWind: WindSettings,
       nextVariationSeed: number
     ) => {
-      void sceneRef.current?.rebuildScene(
-        nextConfig,
-        nextForest,
-        nextWind,
-        nextVariationSeed
-      )
+      void sceneRef.current?.rebuild({
+        species: nextConfig,
+        forest: nextForest,
+        wind: nextWind,
+        variationSeed: nextVariationSeed,
+      })
     },
     []
   )

@@ -1,4 +1,9 @@
 import type { SpeciesConfig } from '@/engine/species'
+import {
+  getTreeTextureAssetFormat,
+  getTreeTextureAssetUrl,
+  type TreeAssetPack,
+} from '@/lib/assets'
 import * as THREE from 'three/webgpu'
 import { loadBarkTextures, loadLeafTexture } from './textures'
 
@@ -47,20 +52,32 @@ export function setMaterialWireframe(material: THREE.Material, enabled: boolean)
   }
 }
 
-export async function getBarkTextures(species: string) {
-  if (!barkCache.has(species)) {
-    barkCache.set(species, await loadBarkTextures(species))
+export async function getBarkTextures(
+  species: string,
+  assetPack: TreeAssetPack
+) {
+  const bark = assetPack.bark[species]
+  const cacheKey = bark
+    ? `${assetPack.transcoderPath}|${species}|${getTreeTextureAssetFormat(bark.basecolor)}:${getTreeTextureAssetUrl(bark.basecolor)}|${getTreeTextureAssetFormat(bark.normal)}:${getTreeTextureAssetUrl(bark.normal)}|${getTreeTextureAssetFormat(bark.roughness)}:${getTreeTextureAssetUrl(bark.roughness)}|${getTreeTextureAssetFormat(bark.metalness)}:${getTreeTextureAssetUrl(bark.metalness)}|${getTreeTextureAssetFormat(bark.height)}:${getTreeTextureAssetUrl(bark.height)}`
+    : `${assetPack.transcoderPath}|${species}|missing`
+
+  if (!barkCache.has(cacheKey)) {
+    barkCache.set(cacheKey, await loadBarkTextures(species, assetPack))
   }
-  return barkCache.get(species)!
+  return barkCache.get(cacheKey)!
 }
 
 export async function getLeafTexture(
   species: string,
-  type: SpeciesConfig['leafTextureType']
+  type: SpeciesConfig['leafTextureType'],
+  assetPack: TreeAssetPack
 ) {
-  const key = `${species}_${type}`
+  const textureSource = assetPack.leaves[species]?.[type]
+  const key = textureSource
+    ? `${assetPack.transcoderPath}|${species}_${type}|${getTreeTextureAssetFormat(textureSource)}:${getTreeTextureAssetUrl(textureSource)}`
+    : `${assetPack.transcoderPath}|${species}_${type}|missing`
   if (!leafCache.has(key)) {
-    leafCache.set(key, await loadLeafTexture(species, type))
+    leafCache.set(key, await loadLeafTexture(species, type, assetPack))
   }
   return leafCache.get(key)!
 }

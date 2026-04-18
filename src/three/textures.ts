@@ -1,16 +1,33 @@
 import * as THREE from 'three/webgpu'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
+import {
+  getBarkTextureAssetPaths,
+  getLeafTextureAssetPaths,
+  getTreeTextureAssetFormat,
+  getTreeTextureAssetUrl,
+  type TreeTextureAssetSource,
+  type TreeAssetPack,
+  DEFAULT_TREE_ASSET_PACK,
+} from '@/lib/assets'
 
-let ktx2Loader: KTX2Loader | null = null
+const ktx2Loaders = new Map<string, KTX2Loader>()
+const imageLoader = new THREE.TextureLoader()
 
-export function initKTX2Loader(renderer: THREE.WebGPURenderer): KTX2Loader {
-  if (ktx2Loader) return ktx2Loader
-  ktx2Loader = new KTX2Loader()
-  ktx2Loader.setTranscoderPath(
-    'https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/libs/basis/'
-  )
-  ktx2Loader.detectSupport(renderer)
-  return ktx2Loader
+export function initKTX2Loader(
+  renderer: THREE.WebGPURenderer,
+  transcoderPath = DEFAULT_TREE_ASSET_PACK.transcoderPath
+): KTX2Loader {
+  const existingLoader = ktx2Loaders.get(transcoderPath)
+  if (existingLoader) {
+    existingLoader.detectSupport(renderer)
+    return existingLoader
+  }
+
+  const loader = new KTX2Loader()
+  loader.setTranscoderPath(transcoderPath)
+  loader.detectSupport(renderer)
+  ktx2Loaders.set(transcoderPath, loader)
+  return loader
 }
 
 export interface BarkTextures {
@@ -21,16 +38,40 @@ export interface BarkTextures {
   height: THREE.Texture
 }
 
-export async function loadBarkTextures(species: string): Promise<BarkTextures> {
-  const loader = ktx2Loader!
-  const base = `/textures/bark/${species}/${species}`
+async function loadTextureAssetSource(
+  source: TreeTextureAssetSource,
+  assetPack: TreeAssetPack
+): Promise<THREE.Texture> {
+  const url = getTreeTextureAssetUrl(source)
+  const format = getTreeTextureAssetFormat(source)
+
+  if (format === 'ktx2') {
+    const loader = ktx2Loaders.get(assetPack.transcoderPath)
+
+    if (!loader) {
+      throw new Error(
+        'KTX2 loader is not initialized. Call initKTX2Loader() before loading ktx2 textures.'
+      )
+    }
+
+    return loader.loadAsync(url)
+  }
+
+  return imageLoader.loadAsync(url)
+}
+
+export async function loadBarkTextures(
+  barkId: string,
+  assetPack: TreeAssetPack
+): Promise<BarkTextures> {
+  const barkPaths = getBarkTextureAssetPaths(assetPack, barkId)
 
   const [basecolor, normal, roughness, metalness, height] = await Promise.all([
-    loader.loadAsync(`${base}_basecolor.ktx2`),
-    loader.loadAsync(`${base}_normal.ktx2`),
-    loader.loadAsync(`${base}_roughness.ktx2`),
-    loader.loadAsync(`${base}_metalness.ktx2`),
-    loader.loadAsync(`${base}_height.ktx2`),
+    loadTextureAssetSource(barkPaths.basecolor, assetPack),
+    loadTextureAssetSource(barkPaths.normal, assetPack),
+    loadTextureAssetSource(barkPaths.roughness, assetPack),
+    loadTextureAssetSource(barkPaths.metalness, assetPack),
+    loadTextureAssetSource(barkPaths.height, assetPack),
   ])
 
   for (const tex of [basecolor, normal, roughness, metalness, height]) {
@@ -44,11 +85,12 @@ export async function loadBarkTextures(species: string): Promise<BarkTextures> {
 }
 
 export async function loadLeafTexture(
-  species: string,
-  type: 'single' | 'cluster'
+  leafId: string,
+  type: 'single' | 'cluster',
+  assetPack: TreeAssetPack
 ): Promise<THREE.Texture> {
-  const loader = ktx2Loader!
-  const tex = await loader.loadAsync(`/textures/leaves/${species}_${type}.ktx2`)
+  const leafPaths = getLeafTextureAssetPaths(assetPack, leafId)
+  const tex = await loadTextureAssetSource(leafPaths[type], assetPack)
   tex.colorSpace = THREE.SRGBColorSpace
   return tex
 }

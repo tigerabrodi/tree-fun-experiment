@@ -8,116 +8,73 @@ performance by default.
 
 webgpu first.
 
-the user should not need to become a rendering engineer just to get good trees and forests.
+same repo.
 
-## current base
+same playground.
 
-1. `src/engine` now has a cleaner boundary.
-2. `src/engine/blueprint.ts` builds tree blueprints and forest variant blueprints.
-3. `src/three` consumes those blueprints and turns them into meshes. materials. wind buffers. and scene objects.
-4. `src/components` stays app only.
+same renderer api.
 
-this is the right base for a future library.
+## what is true now
 
-the important idea is simple.
+1. the public library entry is `src/lib/index.ts`.
+2. the playground now uses that library entry instead of calling the scene layer directly.
+3. default textures are part of the shipped package asset pack in `src/lib/textures`.
+4. custom bark and leaf textures are supported through `createTreeAssetPack`.
+5. the renderer surface is typed and library shaped.
 
-the engine should describe trees.
+## current public shape
 
-the renderer should draw trees.
+1. `createTreeRenderer`
+2. `createVariationSeed`
+3. `defineSpecies`
+4. `defineForestSettings`
+5. species presets
+6. forest presets
+7. wind and debug defaults
+8. default asset pack and asset pack helpers
 
-the app should only drive controls and viewing.
+## current internal split
 
-## what we already have
+1. `src/engine`
+tree generation. forest layout. chunk planning. lod planning. worker rebuild planning.
 
-1. l system generation.
-2. tree blueprints with segments and leaves.
-3. species presets.
-4. giant forest variant planning.
-5. instanced leaves.
-6. instanced trunks in giant forest.
-7. gpu leaf wind through webgpu compute.
-8. compressed bark textures.
+2. `src/three`
+webgpu renderer. materials. instancing. wind. culling. perf reporting.
 
-## what we do not have yet
+3. `src/lib`
+public typed api.
 
-1. perf stats.
-2. chunked forest rendering.
-3. real forest culling.
-4. lod.
-5. worker based generation and mesh build.
-6. distance based wind quality.
-7. texture atlas strategy for many species and seasons.
-8. impostors.
-9. occlusion culling.
+4. `src/components`
+playground ui only.
 
-## important current weakness
+## current perf systems
 
-leaf culling is off right now.
+1. instanced leaves.
+2. instanced trunks in giant forest.
+3. chunked forest rendering.
+4. chunk frustum culling.
+5. chunk lod with `near`. `mid`. `far`. `ultra far`.
+6. wind lod.
+7. worker rebuild planning.
+8. worker matrix packing.
+9. worker trunk geometry packing.
+10. worker caching.
+11. live perf stats and debug json.
 
-leaf cards are also double sided alpha tested geometry.
+## next likely work
 
-that means leaf overdraw is still a real cost.
+1. cleaner public examples.
+2. better docs around custom species and custom assets.
+3. more texture packs.
+4. more leaf packs.
+5. possible future publish path once the package name and asset shipping story are locked down.
 
-## build order
+## things we are not focusing on right now
 
-1. add perf stats first.
-draw calls. trunk instance count. leaf instance count. forest variant count now. chunk count later.
+1. occlusion culling.
+2. impostors.
+3. extra chunk splitting.
 
-2. chunk the forest.
-this is the first big rendering step. it unlocks better culling and later lod.
+they can come later if the project needs them.
 
-3. add chunk frustum culling.
-once the forest is chunked. we can stop drawing chunks the camera cannot see.
-
-4. add lod.
-near trees keep full detail.
-mid trees get cheaper trunks and fewer leaves.
-far trees get much cheaper versions.
-
-5. reduce leaf overdraw.
-fewer far leaves.
-thinner far canopies.
-maybe simpler far broadleaf cards.
-
-6. move heavy build work off the main thread.
-generation and mesh build can go into workers later.
-
-7. add wind lod.
-near chunks keep the full nice wind.
-mid chunks get simpler sway.
-far chunks get almost none.
-
-8. add texture atlases and streaming.
-this matters when species count and season count get large.
-
-9. add impostors last.
-this should come after chunking and lod.
-
-10. only then consider occlusion culling if still needed.
-
-## future library shape
-
-1. generation layer.
-species. l systems. blueprint building. forest layout.
-
-2. render layer.
-instancing. textures. materials. wind. culling. lod.
-
-3. app layer.
-viewer. panel. debug tools.
-
-## simple api shape later
-
-1. `buildTreeBlueprint`.
-2. `buildForestVariantBlueprints`.
-3. `createForestRenderer`.
-4. `updateWind`.
-5. `dispose`.
-
-that is the shape we want.
-
-composable.
-
-typed.
-
-easy to expose.
+they are not required for the current side project goal.

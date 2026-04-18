@@ -1,42 +1,76 @@
 {
-  "name": "tree-fun-experiment",
-  "private": true,
-  "version": "0.0.0",
+  "name": "@tigerabrodioss/l-trees",
+  "private": false,
+  "version": "0.1.0",
   "type": "module",
+  "main": "./dist-lib/index.js",
+  "module": "./dist-lib/index.js",
+  "types": "./dist-lib/lib/index.d.ts",
+  "sideEffects": false,
+  "keywords": [
+    "webgpu",
+    "threejs",
+    "procedural",
+    "trees",
+    "forest",
+    "l-system",
+    "graphics"
+  ],
+  "files": [
+    "dist-lib",
+    "README.md",
+    "docs-content"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist-lib/lib/index.d.ts",
+      "import": "./dist-lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:lib": "vite build --config vite.lib.config.ts && node scripts/prune-lib-assets.mjs && tsc -p tsconfig.lib.json",
     "lint": "eslint .",
     "tsc": "tsc -b",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "pack:lib": "npm pack --dry-run",
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview"
   },
-  "dependencies": {
-    "@fontsource-variable/fraunces": "^5.2.9",
-    "@fontsource-variable/inter": "^5.2.8",
-    "@tailwindcss/vite": "^4.2.2",
-    "clsx": "^2.1.1",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "tailwind-merge": "^3.5.0",
-    "tailwindcss": "^4.2.2",
+  "peerDependencies": {
     "three": "^0.183.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@fontsource-variable/fraunces": "^5.2.9",
+    "@fontsource-variable/inter": "^5.2.8",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^6.0.1",
+    "@tailwindcss/vite": "^4.2.2",
+    "clsx": "^2.1.1",
     "eslint": "^10.2.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.5.0",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.7.2",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.2",
+    "three": "^0.183.2",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.2",
     "vite": "^8.0.8",
