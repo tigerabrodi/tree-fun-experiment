@@ -85,6 +85,30 @@ when you are done.
 trees.dispose()
 ```
 
+## i want procedural trees in my game
+
+start here.
+
+1. use this package first.
+2. start with the shipped species and shipped textures.
+3. use `SINGLE_TREE_FOREST` for hero trees.
+4. use `GIANT_FOREST_SETTINGS` for many trees and the full perf path.
+5. tune the shape with branch angle, angle variance, decay, and leaf density.
+6. swap bark or leaf textures later if you want your own look.
+
+the simple idea is this.
+
+- get the tree silhouette right first.
+- get the canopy mass right second.
+- only then go deeper on texture style and species tuning.
+
+if you want this package because you want procedural trees that look nice and stay performant, this is the intended path.
+
+- use the built in species first.
+- use the built in forest modes first.
+- keep the shipped `ktx2` textures if you want the easiest path.
+- bring your own textures only when you want a custom art direction.
+
 ## use shipped textures or your own
 
 the default presets work out of the box with the shipped `ktx2` textures.
