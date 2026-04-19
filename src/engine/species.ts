@@ -242,6 +242,73 @@ export const ALL_SPECIES: Record<string, SpeciesConfig> = {
   sakura: SAKURA,
 }
 
+type ForestRuntimeTuning = {
+  angleScale?: number
+  angleVarianceScale?: number
+  branchSpinJitterScale?: number
+  initialRadiusScale: number
+  iterationsDelta: number
+  leafClusterSpreadScale: number
+  leafDensityScale?: number
+  leafSizeScale: number
+  lengthDecayDelta: number
+  lengthScaleScale: number
+  radiusDecayScale?: number
+  segmentTaperDelta?: number
+  shortStepJitterScale?: number
+}
+
+const GENERIC_FOREST_RUNTIME_TUNING: ForestRuntimeTuning = {
+  initialRadiusScale: 0.94,
+  iterationsDelta: -1,
+  leafClusterSpreadScale: 1.06,
+  leafSizeScale: 1.1,
+  lengthDecayDelta: 0.012,
+  lengthScaleScale: 1.03,
+}
+
+const FOREST_RUNTIME_TUNING: Partial<Record<SpeciesConfig['name'], ForestRuntimeTuning>> = {
+  oak: {
+    ...GENERIC_FOREST_RUNTIME_TUNING,
+    angleScale: 0.96,
+    leafSizeScale: 1.14,
+    leafClusterSpreadScale: 1.08,
+    leafDensityScale: 0.94,
+    radiusDecayScale: 0.98,
+  },
+  pine: {
+    ...GENERIC_FOREST_RUNTIME_TUNING,
+    leafSizeScale: 1.08,
+    leafClusterSpreadScale: 1.05,
+    leafDensityScale: 0.96,
+    lengthScaleScale: 1.02,
+    shortStepJitterScale: 0.92,
+  },
+  birch: {
+    ...GENERIC_FOREST_RUNTIME_TUNING,
+    angleVarianceScale: 0.94,
+    branchSpinJitterScale: 0.92,
+    leafDensityScale: 0.93,
+    leafSizeScale: 1.08,
+    leafClusterSpreadScale: 1.04,
+  },
+  maple: {
+    ...GENERIC_FOREST_RUNTIME_TUNING,
+    angleScale: 0.96,
+    leafSizeScale: 1.12,
+    leafDensityScale: 0.95,
+    leafClusterSpreadScale: 1.08,
+  },
+  sakura: {
+    ...GENERIC_FOREST_RUNTIME_TUNING,
+    angleScale: 0.97,
+    leafSizeScale: 1.12,
+    leafDensityScale: 0.94,
+    leafClusterSpreadScale: 1.06,
+    branchSpinJitterScale: 0.95,
+  },
+}
+
 function createSeededRandom(seed: number) {
   let rng = Math.abs(Math.floor(seed)) % 2147483647
   if (rng === 0) rng = 1
@@ -282,6 +349,80 @@ function jitterInteger(
   max: number
 ) {
   return Math.round(jitterRange(value, random, delta, min, max))
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+export function createForestRuntimeConfig(config: SpeciesConfig): SpeciesConfig {
+  const tuning =
+    FOREST_RUNTIME_TUNING[config.name] ?? GENERIC_FOREST_RUNTIME_TUNING
+
+  return {
+    ...config,
+    iterations: clampNumber(
+      config.iterations + tuning.iterationsDelta,
+      1,
+      config.iterations
+    ),
+    angle: clampNumber(config.angle * (tuning.angleScale ?? 1), 5, 60),
+    angleVariance: clampNumber(
+      config.angleVariance * (tuning.angleVarianceScale ?? 1),
+      0,
+      20
+    ),
+    lengthScale: clampNumber(
+      config.lengthScale * tuning.lengthScaleScale,
+      0.2,
+      3
+    ),
+    lengthDecay: clampNumber(
+      config.lengthDecay + tuning.lengthDecayDelta,
+      0.5,
+      0.98
+    ),
+    shortStepJitter: clampNumber(
+      config.shortStepJitter * (tuning.shortStepJitterScale ?? 1),
+      0,
+      0.5
+    ),
+    initialRadius: clampNumber(
+      config.initialRadius * tuning.initialRadiusScale,
+      0.03,
+      0.6
+    ),
+    segmentTaper: clampNumber(
+      config.segmentTaper + (tuning.segmentTaperDelta ?? 0),
+      0.9,
+      0.995
+    ),
+    radiusDecay: clampNumber(
+      config.radiusDecay * (tuning.radiusDecayScale ?? 1),
+      0.4,
+      0.95
+    ),
+    branchSpinJitter: clampNumber(
+      config.branchSpinJitter * (tuning.branchSpinJitterScale ?? 1),
+      0,
+      180
+    ),
+    leafSize: clampNumber(
+      config.leafSize * tuning.leafSizeScale,
+      0.2,
+      3
+    ),
+    leafDensity: clampNumber(
+      config.leafDensity * (tuning.leafDensityScale ?? 1),
+      0,
+      1
+    ),
+    leafClusterSpread: clampNumber(
+      config.leafClusterSpread * tuning.leafClusterSpreadScale,
+      0.05,
+      0.6
+    ),
+  }
 }
 
 export function createForestVariantConfig(

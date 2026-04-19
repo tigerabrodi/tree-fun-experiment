@@ -1,4 +1,6 @@
+import type { ForestSettings } from '@/engine/forest'
 import type { SpeciesConfig } from '@/engine/species'
+import { createForestRuntimeConfig } from '@/engine/species'
 import {
   getTreeTextureAssetFormat,
   getTreeTextureAssetUrl,
@@ -80,4 +82,11 @@ export async function getLeafTexture(
     leafCache.set(key, await loadLeafTexture(species, type, assetPack))
   }
   return leafCache.get(key)!
+}
+
+export function resolveSceneSpeciesConfig(
+  config: SpeciesConfig,
+  forest: ForestSettings
+) {
+  return forest.count > 1 ? createForestRuntimeConfig(config) : config
 }

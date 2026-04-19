@@ -2,6 +2,10 @@ import { useCallback, useRef, useState } from 'react'
 import { type TreeRenderer, type ViewPreset } from '@/lib'
 import { Panel } from '@/components/panel'
 import { TreeCanvas } from '@/components/canvas'
+import { type AppMode } from '@/components/mode-switch'
+import { ExplorePanel } from '@/explore/panel'
+import { ExploreCanvas } from '@/explore/canvas'
+import type { ExploreSceneHandle, ExploreWorldStats } from '@/explore/scene'
 import { SINGLE_TREE_FOREST, type ForestSettings } from '@/engine/forest'
 import { OAK, type SpeciesConfig } from '@/engine/species'
 import { DEFAULT_WIND_SETTINGS, type WindSettings } from '@/three/wind'
@@ -16,6 +20,7 @@ function createVariationSeed(): number {
 }
 
 export function App() {
+  const [mode, setMode] = useState<AppMode>('lab')
   const [config, setConfig] = useState<SpeciesConfig>(OAK)
   const [forest, setForest] = useState<ForestSettings>(SINGLE_TREE_FOREST)
   const [wind, setWind] = useState<WindSettings>(DEFAULT_WIND_SETTINGS)
@@ -26,7 +31,11 @@ export function App() {
   const [canvasKey, setCanvasKey] = useState(0)
   const [performanceStats, setPerformanceStats] =
     useState<ScenePerformanceStats | null>(null)
+  const [exploreSeed, setExploreSeed] = useState(createVariationSeed)
+  const [exploreStats, setExploreStats] =
+    useState<ExploreWorldStats | null>(null)
   const sceneRef = useRef<TreeRenderer | null>(null)
+  const exploreSceneRef = useRef<ExploreSceneHandle | null>(null)
   const perfRecoveryTriggeredRef = useRef(false)
 
   const handlePerformanceStatsChange = useCallback(
@@ -113,31 +122,61 @@ export function App() {
     []
   )
 
+  const handleExploreRegenerate = useCallback(() => {
+    const nextSeed = createVariationSeed()
+    setExploreSeed(nextSeed)
+  }, [])
+
+  const handleExploreResetPlayer = useCallback(() => {
+    exploreSceneRef.current?.resetPlayer()
+  }, [])
+
   return (
     <div className="flex h-dvh bg-[var(--color-bg)]">
-      <Panel
-        config={config}
-        forest={forest}
-        wind={wind}
-        debugView={debugView}
-        performanceStats={performanceStats}
-        onChange={handleChange}
-        onForestChange={handleForestChange}
-        onWindChange={handleWindChange}
-        onDebugViewChange={handleDebugViewChange}
-        onRegenerate={handleRegenerate}
-        onViewPreset={handleViewPreset}
-      />
-      <TreeCanvas
-        key={canvasKey}
-        config={config}
-        forest={forest}
-        wind={wind}
-        debugView={debugView}
-        variationSeed={variationSeed}
-        sceneRef={sceneRef}
-        onPerformanceStatsChange={handlePerformanceStatsChange}
-      />
+      {mode === 'lab' ? (
+        <>
+          <Panel
+            mode={mode}
+            config={config}
+            forest={forest}
+            wind={wind}
+            debugView={debugView}
+            performanceStats={performanceStats}
+            onModeChange={setMode}
+            onChange={handleChange}
+            onForestChange={handleForestChange}
+            onWindChange={handleWindChange}
+            onDebugViewChange={handleDebugViewChange}
+            onRegenerate={handleRegenerate}
+            onViewPreset={handleViewPreset}
+          />
+          <TreeCanvas
+            key={canvasKey}
+            config={config}
+            forest={forest}
+            wind={wind}
+            debugView={debugView}
+            variationSeed={variationSeed}
+            sceneRef={sceneRef}
+            onPerformanceStatsChange={handlePerformanceStatsChange}
+          />
+        </>
+      ) : (
+        <>
+          <ExplorePanel
+            mode={mode}
+            onModeChange={setMode}
+            stats={exploreStats}
+            onRegenerate={handleExploreRegenerate}
+            onResetPlayer={handleExploreResetPlayer}
+          />
+          <ExploreCanvas
+            seed={exploreSeed}
+            sceneRef={exploreSceneRef}
+            onStatsChange={setExploreStats}
+          />
+        </>
+      )}
     </div>
   )
 }

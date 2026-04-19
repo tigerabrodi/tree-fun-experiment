@@ -4,17 +4,20 @@ import {
   type ForestSettings,
 } from '@/engine/forest'
 import { ALL_SPECIES, type SpeciesConfig } from '@/engine/species'
+import { ModeSwitch, type AppMode } from '@/components/mode-switch'
 import type { ViewPreset } from '@/three/scene'
 import { type WindSettings } from '@/three/wind'
 import type { ScenePerformanceStats } from '@/three/performance'
 import { toggleDebugViewSetting, type DebugViewSettings } from '@/three/debug'
 
 interface PanelProps {
+  mode: AppMode
   config: SpeciesConfig
   forest: ForestSettings
   wind: WindSettings
   debugView: DebugViewSettings
   performanceStats: ScenePerformanceStats | null
+  onModeChange: (mode: AppMode) => void
   onChange: (config: SpeciesConfig) => void
   onForestChange: (forest: ForestSettings) => void
   onWindChange: (wind: WindSettings) => void
@@ -62,11 +65,13 @@ function Slider({
 }
 
 export function Panel({
+  mode,
   config,
   forest,
   wind,
   debugView,
   performanceStats,
+  onModeChange,
   onChange,
   onForestChange,
   onWindChange,
@@ -130,6 +135,8 @@ export function Panel({
       <h1 className="font-display text-[26px] font-normal tracking-tight text-[var(--color-text)]">
         L-System Trees
       </h1>
+
+      <ModeSwitch mode={mode} onModeChange={onModeChange} />
 
       {/* Species */}
       <div className="flex flex-col gap-4">

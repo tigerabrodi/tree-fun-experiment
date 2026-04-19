@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { OAK, PINE, createForestVariantConfig } from './species'
+import { buildTreeBlueprint } from './blueprint'
+import {
+  OAK,
+  PINE,
+  createForestRuntimeConfig,
+  createForestVariantConfig,
+} from './species'
+
+describe('createForestRuntimeConfig', () => {
+  it('keeps the same species identity while making the runtime config cheaper', () => {
+    const forestOak = createForestRuntimeConfig(OAK)
+
+    expect(forestOak.name).toBe(OAK.name)
+    expect(forestOak.rules).toBe(OAK.rules)
+    expect(forestOak.barkTexture).toBe(OAK.barkTexture)
+    expect(forestOak.leafTexture).toBe(OAK.leafTexture)
+    expect(forestOak.iterations).toBeLessThan(OAK.iterations)
+    expect(forestOak.leafSize).toBeGreaterThan(OAK.leafSize)
+  })
+
+  it('cuts oak branch and leaf complexity while keeping the same general canopy family', () => {
+    const heroOak = buildTreeBlueprint(OAK, 42)
+    const forestOak = buildTreeBlueprint(createForestRuntimeConfig(OAK), 42)
+
+    expect(forestOak.segments.length).toBeLessThan(heroOak.segments.length)
+    expect(forestOak.leaves.length).toBeLessThan(heroOak.leaves.length)
+    expect(forestOak.config.name).toBe(heroOak.config.name)
+  })
+})
 
 describe('createForestVariantConfig', () => {
   it('is deterministic for the same seed', () => {

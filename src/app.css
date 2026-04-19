@@ -129,3 +129,47 @@ aside::-webkit-scrollbar-thumb {
   background: rgba(45, 42, 38, 0.12);
   border-radius: 2px;
 }
+
+.explore-hud-crosshair {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+}
+
+.explore-hud-crosshair::before,
+.explore-hud-crosshair::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.24);
+}
+
+.explore-hud-crosshair::before {
+  width: 18px;
+  height: 2px;
+}
+
+.explore-hud-crosshair::after {
+  width: 2px;
+  height: 18px;
+}
+
+.explore-hud-hint {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  max-width: 320px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(22, 22, 22, 0.5);
+  color: rgba(255, 255, 255, 0.94);
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(10px);
+}

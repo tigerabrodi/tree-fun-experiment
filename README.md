@@ -221,6 +221,13 @@ bun install
 bun run dev
 ```
 
+the local playground now has two separate views.
+
+- `Tree Lab`. the existing tree tuning view.
+- `Explore`. a first person oak terrain view for testing trees at human scale.
+
+more notes for that mode are in [docs/explore-mode.md](/Users/tigerabrodi/Desktop/tree-fun-experiment/docs/explore-mode.md).
+
 use these for checks.
 
 ```bash

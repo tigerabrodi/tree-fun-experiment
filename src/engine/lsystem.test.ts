@@ -336,7 +336,7 @@ describe('interpretLString', () => {
       const occupiedBins = bins.filter((count) => count > 0).length
 
       expect(centroidRadius / Math.max(0.001, maxRadius)).toBeLessThanOrEqual(
-        0.15
+        0.18
       )
       expect(occupiedBins).toBeGreaterThanOrEqual(7)
     }

@@ -26,6 +26,21 @@ export function TreeCanvas({
   onPerformanceStatsChange,
 }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const latestStateRef = useRef({
+    config,
+    forest,
+    wind,
+    debugView,
+    variationSeed,
+  })
+
+  latestStateRef.current = {
+    config,
+    forest,
+    wind,
+    debugView,
+    variationSeed,
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -50,6 +65,28 @@ export function TreeCanvas({
       ctx = scene
       scene.setDebugView(debugView)
       sceneRef.current = scene
+
+      const latestState = latestStateRef.current
+      const hasStateChangedWhileMounting =
+        latestState.config !== config ||
+        latestState.forest !== forest ||
+        latestState.wind !== wind ||
+        latestState.variationSeed !== variationSeed
+      const hasDebugViewChangedWhileMounting =
+        latestState.debugView !== debugView
+
+      if (hasStateChangedWhileMounting) {
+        void scene.rebuild({
+          species: latestState.config,
+          forest: latestState.forest,
+          wind: latestState.wind,
+          variationSeed: latestState.variationSeed,
+        })
+      }
+
+      if (hasDebugViewChangedWhileMounting) {
+        scene.setDebugView(latestState.debugView)
+      }
     })
 
     return () => {

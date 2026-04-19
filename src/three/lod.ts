@@ -26,7 +26,7 @@ export function getChunkLodLevel(
 ): TreeLodLevel {
   const nearDistance = Math.max(20, cellSize * 1.6)
   const midDistance = Math.max(92, cellSize * 6.4)
-  const farDistance = Math.max(168, cellSize * 10.5)
+  const farDistance = Math.max(144, cellSize * 9)
 
   if (distance <= nearDistance) {
     return 'near'

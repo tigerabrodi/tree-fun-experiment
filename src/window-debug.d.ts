@@ -9,6 +9,11 @@ declare global {
       ) => void
       setViewPreset: (preset: import('./three/scene').ViewPreset) => void
     }
+    __treeExploreDebug?: {
+      getSnapshot: () => import('./explore/scene').ExploreWorldStats
+      resetPlayer: () => void
+      setPlayerPosition: (x: number, z: number) => void
+    }
   }
 }
 

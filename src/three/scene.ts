@@ -1,61 +1,24 @@
 import { type ForestSettings } from '@/engine/forest'
 import { DEFAULT_TREE_ASSET_PACK, type TreeAssetPack } from '@/lib/assets'
-import {
-  TREE_LOD_LEVELS,
-  type TreeLodLevel,
-} from '@/engine/lod'
-import {
-  flattenNearVariants,
-  type PlannedChunkLodStateMap,
-} from '@/engine/rebuild-plan'
+import { TREE_LOD_LEVELS, type TreeLodLevel } from '@/engine/lod'
+import { flattenNearVariants, type PlannedChunkLodStateMap } from '@/engine/rebuild-plan'
 import { createRebuildWorkerClient } from '@/engine/rebuild-worker-client'
 import * as THREE from 'three/webgpu'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { initKTX2Loader } from './textures'
 import { createBarkMaterial, createLeafMaterial } from './materials'
-import {
-  buildInstancedMeshFromMatrixElements,
-  createLeafGeometry,
-} from './tree-mesh'
+import { buildInstancedMeshFromMatrixElements, createLeafGeometry } from './tree-mesh'
 import { createChunkDebugOverlay, type ChunkDebugBounds } from './debug-overlay'
-import {
-  buildChunkLodRenderState,
-  buildChunkSummary,
-  finalizeInstancedBounds,
-  type ChunkLodRenderState,
-} from './forest-render'
+import { buildChunkLodRenderState, buildChunkSummary, finalizeInstancedBounds, type ChunkLodRenderState } from './forest-render'
 import { type SpeciesConfig } from '@/engine/species'
-import {
-  createLeafWindRuntimeFromMatrixElements,
-  type LeafWindRuntime,
-  type WindSettings,
-} from './wind'
+import { createLeafWindRuntimeFromMatrixElements, type LeafWindRuntime, type WindSettings } from './wind'
 import { applyChunkFrustumCulling } from './culling'
 import { applyChunkLod, getChunkLodLevel } from './lod'
-import {
-  type ChunkPerformanceSummary,
-  type SceneDebugSnapshot,
-  mergeScenePerformanceStats,
-  summarizeGiantForestPerformance,
-  summarizeSingleForestPerformance,
-  type ScenePerformanceStats,
-  type StaticScenePerformanceStats,
-} from './performance'
+import { type ChunkPerformanceSummary, type SceneDebugSnapshot, mergeScenePerformanceStats, summarizeGiantForestPerformance, summarizeSingleForestPerformance, type ScenePerformanceStats, type StaticScenePerformanceStats } from './performance'
 import { normalizeDebugViewSettings, type DebugViewSettings } from './debug'
-import {
-  disposeGroupResources,
-  getBarkTextures,
-  getLeafTexture,
-  setMaterialWireframe,
-} from './scene-support'
+import { disposeGroupResources, getBarkTextures, getLeafTexture, resolveSceneSpeciesConfig, setMaterialWireframe } from './scene-support'
 import { summarizeLiveChunks } from './scene-chunk-summary'
-import {
-  applyViewPreset,
-  cloneSceneFrame,
-  createSceneFrame,
-  type SceneFrame,
-  type ViewPreset,
-} from './view-frame'
+import { applyViewPreset, cloneSceneFrame, createSceneFrame, type SceneFrame, type ViewPreset } from './view-frame'
 import { getChunkLeafTexture, getFallbackChunkLodLevel, getInitialChunkLodLevel } from './scene-lod-support'
 import { createTrunkGeometryFromPackedData } from './trunk-geometry-data'
 import { getWorkerPerformanceStats } from './worker-performance'
@@ -94,13 +57,13 @@ interface ChunkRenderState {
   plannedLodStates?: PlannedChunkLodStateMap
   visible: boolean
 }
-
 interface ChunkBuildResources {
   barkMat: THREE.Material
   clusterLeafTex: THREE.Texture
   singleLeafTex: THREE.Texture
   wind: WindSettings
 }
+
 export async function createScene(
   canvas: HTMLCanvasElement,
   initialConfig: SpeciesConfig,
@@ -442,6 +405,7 @@ export async function createScene(
     wind: WindSettings,
     variationSeed: number
   ) {
+    const runtimeConfig = resolveSceneSpeciesConfig(config, forest)
     const rebuildStart = performance.now()
     const version = ++rebuildVersion
     const previousFrame = currentFrame ? cloneSceneFrame(currentFrame) : null
@@ -488,10 +452,10 @@ export async function createScene(
     const nextChunkRenderStates: Array<ChunkRenderState> = []
     const [barkTextures, clusterLeafTex, singleLeafTex, workerBuild] =
       await Promise.all([
-      getBarkTextures(config.barkTexture, assetPack),
-      getLeafTexture(config.leafTexture, 'cluster', assetPack),
-      getLeafTexture(config.leafTexture, 'single', assetPack),
-      rebuildWorker.build(config, forest, variationSeed),
+      getBarkTextures(runtimeConfig.barkTexture, assetPack),
+      getLeafTexture(runtimeConfig.leafTexture, 'cluster', assetPack),
+      getLeafTexture(runtimeConfig.leafTexture, 'single', assetPack),
+      rebuildWorker.build(runtimeConfig, forest, variationSeed),
     ])
 
     if (version !== rebuildVersion) {
