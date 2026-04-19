@@ -8,7 +8,6 @@ import { buildTreeLodVariant } from '@/engine/lod'
 import { createBarkMaterial, createLeafMaterial } from '@/three/materials'
 import {
   createPackedLeafMatrices,
-  createPackedTreeMatrices,
   expandPackedLeafMatrices,
 } from '@/three/matrices'
 import { finalizeInstancedBounds } from '@/three/forest-render'
@@ -23,35 +22,10 @@ import {
 import { loadBarkTextures, loadLeafTexture } from '@/three/textures'
 import { DEFAULT_TREE_ASSET_PACK, type TreeAssetPack } from '@/lib/assets'
 import { DEFAULT_WIND_SETTINGS } from '@/three/wind'
-import type { TerrainHeightSampler } from './terrain'
-import {
-  EXPLORE_TERRAIN_CLEAR_RADIUS,
-  EXPLORE_TERRAIN_TILE_SIZE,
-  EXPLORE_TERRAIN_TREE_MARGIN,
-} from './terrain'
-import type { ForestInstance } from '@/engine/forest'
 import * as THREE from 'three/webgpu'
+import type { ExploreTilePlan, ExploreOakLodLevel } from './tile-plan'
 
 const VARIANT_COUNT = 14
-type ExploreOakLodLevel = 'mid' | 'far'
-
-function createSeededRandom(seed: number) {
-  let rng = Math.abs(Math.floor(seed)) % 2147483647
-  if (rng === 0) rng = 1
-
-  return function random() {
-    rng = (rng * 16807) % 2147483647
-    return rng / 2147483647
-  }
-}
-
-function createCellSeed(seed: number, gridX: number, gridZ: number) {
-  return (
-    (Math.imul(seed ^ (gridX + 1013), 73856093) ^
-      Math.imul(seed ^ (gridZ + 1709), 19349663)) >>>
-      0 || 1
-  )
-}
 
 export interface ExploreOakVariant {
   index: number
@@ -85,10 +59,10 @@ function createExploreOakRuntimeConfig() {
     ...forestOak,
     iterations: Math.max(4, forestOak.iterations - 1),
     initialRadius: forestOak.initialRadius * 0.92,
-    leafSize: forestOak.leafSize * 1.12,
-    leafDensity: Math.max(0.64, forestOak.leafDensity * 0.8),
-    leafClusterCount: Math.max(4, Math.round(forestOak.leafClusterCount * 0.72)),
-    leafClusterSpread: forestOak.leafClusterSpread * 1.12,
+    leafSize: forestOak.leafSize * 1.16,
+    leafDensity: Math.max(0.9, forestOak.leafDensity),
+    leafClusterCount: Math.max(6, Math.round(forestOak.leafClusterCount * 0.94)),
+    leafClusterSpread: forestOak.leafClusterSpread * 1.05,
   }
 }
 
@@ -104,15 +78,19 @@ export async function createExploreOakWorldResources(
   const barkMaterial = createBarkMaterial(barkTextures, DEFAULT_WIND_SETTINGS)
   const leafMaterials: Record<ExploreOakLodLevel, THREE.MeshStandardNodeMaterial> = {
     mid: createLeafMaterial(leafTexture, null, {
-      alphaTest: 0.4,
+      alphaTest: 0.38,
     }),
     far: createLeafMaterial(leafTexture, null, {
-      alphaTest: 0.44,
+      alphaTest: 0.4,
+    }),
+    ultraFar: createLeafMaterial(leafTexture, null, {
+      alphaTest: 0.46,
     }),
   }
   const leafGeometries: Record<ExploreOakLodLevel, THREE.BufferGeometry> = {
-    mid: createLeafGeometry(exploreOak.leafSize * 1.1, 'cluster'),
-    far: createLeafGeometry(exploreOak.leafSize * 1.42, 'single'),
+    mid: createLeafGeometry(exploreOak.leafSize * 1.18, 'cluster'),
+    far: createLeafGeometry(exploreOak.leafSize * 1.24, 'cluster'),
+    ultraFar: createLeafGeometry(exploreOak.leafSize * 1.5, 'single'),
   }
 
   const variants = new Array(VARIANT_COUNT).fill(null).map((_, index) => {
@@ -121,6 +99,7 @@ export async function createExploreOakWorldResources(
     const blueprint = buildTreeBlueprint(config, seed)
     const midLod = buildTreeLodVariant(blueprint, 'mid')
     const farLod = buildTreeLodVariant(blueprint, 'far')
+    const ultraFarLod = buildTreeLodVariant(blueprint, 'ultraFar')
 
     return {
       index,
@@ -150,6 +129,18 @@ export async function createExploreOakWorldResources(
             farLod.renderConfig
           ),
         },
+        ultraFar: {
+          trunkGeometry: createTrunkGeometryFromPackedData(
+            createPackedTrunkGeometryData(ultraFarLod.blueprint.segments, {
+              radialSegments: ultraFarLod.renderConfig.trunkRadialSegments,
+            })
+          ),
+          baseLeafMatrixElements: createPackedLeafMatrices(
+            ultraFarLod.blueprint.leaves,
+            seed,
+            ultraFarLod.renderConfig
+          ),
+        },
       },
     }
   })
@@ -159,83 +150,20 @@ export async function createExploreOakWorldResources(
     leafMaterials,
     leafGeometries,
     leafBoundsRadiusByLod: {
-      mid: exploreOak.leafSize * 1.62,
-      far: exploreOak.leafSize * 1.95,
+      mid: exploreOak.leafSize * 1.76,
+      far: exploreOak.leafSize * 1.88,
+      ultraFar: exploreOak.leafSize * 2.02,
     },
     variants,
   }
 }
-
-function createTileInstances(
-  worldSeed: number,
-  gridX: number,
-  gridZ: number,
-  sampleHeight: TerrainHeightSampler
-) {
-  const seed = createCellSeed(worldSeed, gridX, gridZ)
-  const random = createSeededRandom(seed)
-  const tileCenterX = gridX * EXPLORE_TERRAIN_TILE_SIZE
-  const tileCenterZ = gridZ * EXPLORE_TERRAIN_TILE_SIZE
-  const halfSize = EXPLORE_TERRAIN_TILE_SIZE * 0.5 - EXPLORE_TERRAIN_TREE_MARGIN
-  const desiredCount = 3 + Math.floor(random() * 3)
-  const placements: Array<ForestInstance & { variantIndex: number }> = []
-  let attempts = 0
-
-  while (placements.length < desiredCount && attempts < desiredCount * 24) {
-    attempts += 1
-    const localX = (random() - 0.5) * 2 * halfSize
-    const localZ = (random() - 0.5) * 2 * halfSize
-    const worldX = tileCenterX + localX
-    const worldZ = tileCenterZ + localZ
-
-    if (Math.hypot(worldX, worldZ) < EXPLORE_TERRAIN_CLEAR_RADIUS) {
-      continue
-    }
-
-    let isTooClose = false
-
-    for (const existing of placements) {
-      const dx = existing.position.x - worldX
-      const dz = existing.position.z - worldZ
-
-      if (Math.hypot(dx, dz) < 15) {
-        isTooClose = true
-        break
-      }
-    }
-
-    if (isTooClose) {
-      continue
-    }
-
-    placements.push({
-      position: {
-        x: worldX,
-        y: sampleHeight(worldX, worldZ),
-        z: worldZ,
-      },
-      rotationY: random() * Math.PI * 2,
-      scale: 0.8 + random() * 0.42,
-      seed: (Math.floor(random() * 2147483646) + 1) >>> 0,
-      variantIndex: Math.floor(random() * VARIANT_COUNT),
-    })
-  }
-
-  return placements
-}
-
-export function buildExploreOakTile(
-  worldSeed: number,
-  gridX: number,
-  gridZ: number,
-  sampleHeight: TerrainHeightSampler,
-  resources: ExploreOakWorldResources,
-  lodLevel: ExploreOakLodLevel
+export function buildExploreOakTileFromPlan(
+  plan: ExploreTilePlan,
+  resources: ExploreOakWorldResources
 ): ExploreOakTileBuild {
   const group = new THREE.Group()
-  const placements = createTileInstances(worldSeed, gridX, gridZ, sampleHeight)
 
-  if (placements.length === 0) {
+  if (plan.treeCount === 0) {
     return {
       group,
       treeCount: 0,
@@ -243,16 +171,16 @@ export function buildExploreOakTile(
   }
 
   for (const variant of resources.variants) {
-    const variantPlacements = placements.filter(
-      (placement) => placement.variantIndex === variant.index
+    const variantPlan = plan.variantPlans.find(
+      (candidate) => candidate.variantIndex === variant.index
     )
 
-    if (variantPlacements.length === 0) {
+    if (!variantPlan) {
       continue
     }
 
-    const treeMatrixElements = createPackedTreeMatrices(variantPlacements)
-    const variantLodState = variant.lodStates[lodLevel]
+    const treeMatrixElements = variantPlan.treeMatrixElements
+    const variantLodState = variant.lodStates[plan.lodLevel]
     const trunkMesh = buildInstancedMeshFromMatrixElements(
       variantLodState.trunkGeometry,
       treeMatrixElements,
@@ -267,13 +195,16 @@ export function buildExploreOakTile(
       variantLodState.baseLeafMatrixElements
     )
     const leafMesh = buildInstancedMeshFromMatrixElements(
-      resources.leafGeometries[lodLevel],
+      resources.leafGeometries[plan.lodLevel],
       leafMatrixElements,
-      resources.leafMaterials[lodLevel]
+      resources.leafMaterials[plan.lodLevel]
     )
     leafMesh.userData.treeRole = 'leaf'
     leafMesh.frustumCulled = true
-    finalizeInstancedBounds(leafMesh, resources.leafBoundsRadiusByLod[lodLevel])
+    finalizeInstancedBounds(
+      leafMesh,
+      resources.leafBoundsRadiusByLod[plan.lodLevel]
+    )
     group.add(leafMesh)
   }
 
@@ -281,7 +212,7 @@ export function buildExploreOakTile(
 
   return {
     group,
-    treeCount: placements.length,
+    treeCount: plan.treeCount,
   }
 }
 
@@ -291,11 +222,14 @@ export function disposeExploreOakWorldResources(
   resources.barkMaterial.dispose()
   resources.leafMaterials.mid.dispose()
   resources.leafMaterials.far.dispose()
+  resources.leafMaterials.ultraFar.dispose()
   resources.leafGeometries.mid.dispose()
   resources.leafGeometries.far.dispose()
+  resources.leafGeometries.ultraFar.dispose()
 
   for (const variant of resources.variants) {
     variant.lodStates.mid.trunkGeometry.dispose()
     variant.lodStates.far.trunkGeometry.dispose()
+    variant.lodStates.ultraFar.trunkGeometry.dispose()
   }
 }

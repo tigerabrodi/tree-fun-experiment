@@ -9,23 +9,33 @@ import {
 } from './fps-camera'
 import {
   EXPLORE_TERRAIN_CACHE_RADIUS,
-  EXPLORE_TERRAIN_CENTER_TILE_SEGMENTS,
-  EXPLORE_TERRAIN_MIDDLE_TILE_SEGMENTS,
-  EXPLORE_TERRAIN_OUTER_TILE_SEGMENTS,
-  createExploreTerrainHeightSampler,
-  createExploreTerrainMaterial,
-  createExploreTerrainTileGeometry,
   EXPLORE_TERRAIN_TILE_SIZE,
   getExploreTerrainCellIndex,
+} from './terrain-config'
+import {
+  createExploreTerrainHeightSampler,
+} from './terrain-height'
+import {
+  createExploreTerrainMaterial,
+  createExploreTerrainTileGeometryFromHeightGrid,
   loadExploreTerrainTextures,
   type ExploreTerrainTextures,
 } from './terrain'
 import {
-  buildExploreOakTile,
+  buildExploreOakTileFromPlan,
   createExploreOakWorldResources,
   disposeExploreOakWorldResources,
   type ExploreOakWorldResources,
 } from './oak-world'
+import {
+  createExploreTileWorkerClient,
+  type ExploreTileWorkerClient,
+} from './tile-worker-client'
+import type {
+  ExploreTileBuildRequest,
+  ExploreTilePlan,
+  ExploreOakLodLevel,
+} from './tile-plan'
 import { initKTX2Loader } from '@/three/textures'
 import { DEFAULT_TREE_ASSET_PACK } from '@/lib/assets'
 
@@ -38,6 +48,10 @@ export interface ExploreWorldStats {
   playerZ: number
   seed: number
   variantCount: number
+  midTileCount: number
+  farTileCount: number
+  ultraFarTileCount: number
+  pendingTileCount: number
   drawCalls: number
   computeCalls: number
   triangles: number
@@ -63,19 +77,16 @@ interface ExploreTileState {
   key: string
   gridX: number
   gridZ: number
+  ringDistance: number
   group: THREE.Group
   terrainMesh: THREE.Mesh
   treeCount: number
-}
-
-interface ExploreTileBuildRequest {
-  key: string
-  gridX: number
-  gridZ: number
-  ringDistance: number
+  lodLevel: ExploreOakLodLevel
 }
 
 const MAX_TILE_BUILDS_PER_FRAME = 1
+const MAX_IN_FLIGHT_TILE_BATCHES = 1
+const MAX_TILE_REQUESTS_PER_BATCH = 5
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
@@ -152,10 +163,18 @@ export async function createExploreScene(
   let terrainTextures: ExploreTerrainTextures | null = null
   let terrainMaterial: THREE.MeshStandardNodeMaterial | null = null
   let oakResources: ExploreOakWorldResources | null = null
+  const tileWorker: ExploreTileWorkerClient = createExploreTileWorkerClient()
   const tiles = new Map<string, ExploreTileState>()
-  let pendingTileBuilds: Array<ExploreTileBuildRequest> = []
-  const pendingTileBuildKeys = new Set<string>()
+  let queuedTileRequests: Array<ExploreTileBuildRequest> = []
+  const queuedTileRequestKeys = new Set<string>()
+  let readyTilePlans: Array<ExploreTilePlan> = []
+  const readyTilePlanKeys = new Set<string>()
+  const inFlightTilePlanKeys = new Set<string>()
   const desiredTileKeys = new Set<string>()
+  const desiredTileRingDistances = new Map<string, number>()
+  let worldVersion = 0
+  let inFlightTilePlanBatchCount = 0
+  const queueWaiters = new Set<() => void>()
   let activeTreeCount = 0
   let isDisposed = false
   let frameCountSinceReport = 0
@@ -175,6 +194,10 @@ export async function createExploreScene(
     playerZ: currentMovement.positionZ,
     seed: currentSeed,
     variantCount: 0,
+    midTileCount: 0,
+    farTileCount: 0,
+    ultraFarTileCount: 0,
+    pendingTileCount: 0,
     drawCalls: 0,
     computeCalls: 0,
     triangles: 0,
@@ -202,6 +225,20 @@ export async function createExploreScene(
   }
 
   function getStats(): ExploreWorldStats {
+    let midTileCount = 0
+    let farTileCount = 0
+    let ultraFarTileCount = 0
+
+    for (const tile of tiles.values()) {
+      if (tile.lodLevel === 'mid') {
+        midTileCount += 1
+      } else if (tile.lodLevel === 'far') {
+        farTileCount += 1
+      } else {
+        ultraFarTileCount += 1
+      }
+    }
+
     return {
       activeTileCount: tiles.size,
       activeTreeCount,
@@ -211,6 +248,13 @@ export async function createExploreScene(
       playerZ: currentMovement.positionZ,
       seed: currentSeed,
       variantCount: oakResources?.variants.length ?? 0,
+      midTileCount,
+      farTileCount,
+      ultraFarTileCount,
+      pendingTileCount:
+        queuedTileRequests.length +
+        readyTilePlans.length +
+        inFlightTilePlanKeys.size,
       drawCalls: currentDrawCalls,
       computeCalls: currentComputeCalls,
       triangles: currentTriangles,
@@ -245,56 +289,53 @@ export async function createExploreScene(
     }
   }
 
+  function publishImmediateStats() {
+    lastStats = getStats()
+
+    if (options.onStatsChange) {
+      options.onStatsChange(lastStats)
+    }
+  }
+
   function getTileKey(gridX: number, gridZ: number) {
     return `${gridX}:${gridZ}`
   }
 
-  function disposeTile(tile: ExploreTileState) {
+  function notifyQueueWaiters() {
+    for (const resolve of queueWaiters) {
+      resolve()
+    }
+    queueWaiters.clear()
+  }
+
+  function disposeTile(tile: ExploreTileState, publish = true) {
     scene.remove(tile.group)
     tile.terrainMesh.geometry.dispose()
     tiles.delete(tile.key)
     activeTreeCount -= tile.treeCount
+
+    if (publish) {
+      publishImmediateStats()
+    }
   }
 
-  function buildTile(
-    gridX: number,
-    gridZ: number,
-    ringDistance: number
-  ): ExploreTileState | null {
+  function buildTileFromPlan(plan: ExploreTilePlan): ExploreTileState | null {
     if (!terrainMaterial || !oakResources) {
       return null
     }
 
-    const centerX = gridX * EXPLORE_TERRAIN_TILE_SIZE
-    const centerZ = gridZ * EXPLORE_TERRAIN_TILE_SIZE
-    let terrainSegments = EXPLORE_TERRAIN_OUTER_TILE_SEGMENTS
-
-    if (ringDistance === 0) {
-      terrainSegments = EXPLORE_TERRAIN_CENTER_TILE_SEGMENTS
-    } else if (ringDistance === 1) {
-      terrainSegments = EXPLORE_TERRAIN_MIDDLE_TILE_SEGMENTS
-    }
-    const terrainGeometry = createExploreTerrainTileGeometry(
-      centerX,
-      centerZ,
-      sampleHeight,
-      terrainSegments
+    const centerX = plan.gridX * EXPLORE_TERRAIN_TILE_SIZE
+    const centerZ = plan.gridZ * EXPLORE_TERRAIN_TILE_SIZE
+    const terrainGeometry = createExploreTerrainTileGeometryFromHeightGrid(
+      plan.terrainSegments,
+      plan.terrainHeights
     )
     const terrainMesh = new THREE.Mesh(terrainGeometry, terrainMaterial)
     terrainMesh.position.set(centerX, 0, centerZ)
     terrainMesh.receiveShadow = false
     terrainMesh.castShadow = false
 
-    const lodLevel: 'mid' | 'far' = ringDistance <= 1 ? 'mid' : 'far'
-
-    const tileTrees = buildExploreOakTile(
-      currentSeed,
-      gridX,
-      gridZ,
-      sampleHeight,
-      oakResources,
-      lodLevel
-    )
+    const tileTrees = buildExploreOakTileFromPlan(plan, oakResources)
     const group = new THREE.Group()
     group.add(terrainMesh)
     group.add(tileTrees.group)
@@ -302,17 +343,24 @@ export async function createExploreScene(
     scene.add(group)
 
     return {
-      key: getTileKey(gridX, gridZ),
-      gridX,
-      gridZ,
+      key: plan.key,
+      gridX: plan.gridX,
+      gridZ: plan.gridZ,
+      ringDistance: plan.ringDistance,
       group,
       terrainMesh,
       treeCount: tileTrees.treeCount,
+      lodLevel: plan.lodLevel,
     }
   }
 
   function pruneObsoleteTiles(force = false) {
-    if (!force && pendingTileBuilds.length > 0) {
+    if (
+      !force &&
+      (queuedTileRequests.length > 0 ||
+        readyTilePlans.length > 0 ||
+        inFlightTilePlanKeys.size > 0)
+    ) {
       return
     }
 
@@ -331,7 +379,9 @@ export async function createExploreScene(
     const centerGridX = getExploreTerrainCellIndex(currentMovement.positionX)
     const centerGridZ = getExploreTerrainCellIndex(currentMovement.positionZ)
     const nextDesiredKeys = new Set<string>()
+    const nextDesiredRingDistances = new Map<string, number>()
     const freshRequests: Array<ExploreTileBuildRequest> = []
+    let hasTileStateChange = false
 
     for (
       let offsetX = -EXPLORE_TERRAIN_CACHE_RADIUS;
@@ -348,8 +398,19 @@ export async function createExploreScene(
         const key = getTileKey(gridX, gridZ)
         const ringDistance = Math.max(Math.abs(offsetX), Math.abs(offsetZ))
         nextDesiredKeys.add(key)
+        nextDesiredRingDistances.set(key, ringDistance)
 
-        if (tiles.has(key) || pendingTileBuildKeys.has(key)) {
+        const existingTile = tiles.get(key)
+
+        if (existingTile && existingTile.ringDistance === ringDistance) {
+          continue
+        }
+
+        if (
+          queuedTileRequestKeys.has(key) ||
+          readyTilePlanKeys.has(key) ||
+          inFlightTilePlanKeys.has(key)
+        ) {
           continue
         }
 
@@ -366,13 +427,29 @@ export async function createExploreScene(
     for (const key of nextDesiredKeys) {
       desiredTileKeys.add(key)
     }
+    desiredTileRingDistances.clear()
+    for (const [key, ringDistance] of nextDesiredRingDistances) {
+      desiredTileRingDistances.set(key, ringDistance)
+    }
 
-    pendingTileBuilds = pendingTileBuilds.filter((request) =>
-      desiredTileKeys.has(request.key)
+    queuedTileRequests = queuedTileRequests.filter(
+      (request) =>
+        desiredTileKeys.has(request.key) &&
+        desiredTileRingDistances.get(request.key) === request.ringDistance
     )
-    pendingTileBuildKeys.clear()
-    for (const request of pendingTileBuilds) {
-      pendingTileBuildKeys.add(request.key)
+    queuedTileRequestKeys.clear()
+    for (const request of queuedTileRequests) {
+      queuedTileRequestKeys.add(request.key)
+    }
+
+    readyTilePlans = readyTilePlans.filter(
+      (plan) =>
+        desiredTileKeys.has(plan.key) &&
+        desiredTileRingDistances.get(plan.key) === plan.ringDistance
+    )
+    readyTilePlanKeys.clear()
+    for (const plan of readyTilePlans) {
+      readyTilePlanKeys.add(plan.key)
     }
 
     freshRequests.sort((a, b) => {
@@ -393,50 +470,151 @@ export async function createExploreScene(
     })
 
     for (const request of freshRequests) {
-      pendingTileBuilds.push(request)
-      pendingTileBuildKeys.add(request.key)
+      queuedTileRequests.push(request)
+      queuedTileRequestKeys.add(request.key)
+      hasTileStateChange = true
     }
 
+    for (const tile of tiles.values()) {
+      if (!desiredTileKeys.has(tile.key)) {
+        hasTileStateChange = true
+        break
+      }
+    }
+
+    requestPendingTilePlans()
     pruneObsoleteTiles()
+
+    if (hasTileStateChange) {
+      publishImmediateStats()
+    }
   }
 
-  function flushPendingTileBuilds(buildAll = false) {
+  function requestPendingTilePlans() {
+    if (!oakResources) {
+      return
+    }
+
+    while (
+      inFlightTilePlanBatchCount < MAX_IN_FLIGHT_TILE_BATCHES &&
+      queuedTileRequests.length > 0
+    ) {
+      const requestBatch = queuedTileRequests.splice(0, MAX_TILE_REQUESTS_PER_BATCH)
+
+      for (const request of requestBatch) {
+        queuedTileRequestKeys.delete(request.key)
+        inFlightTilePlanKeys.add(request.key)
+      }
+
+      inFlightTilePlanBatchCount += 1
+      publishImmediateStats()
+      const requestVersion = worldVersion
+
+      void tileWorker
+        .buildTiles(currentSeed, oakResources.variants.length, requestBatch)
+        .then((result) => {
+          if (isDisposed || requestVersion !== worldVersion) {
+            return
+          }
+
+          for (const plan of result.plans) {
+            inFlightTilePlanKeys.delete(plan.key)
+
+            if (
+              !desiredTileKeys.has(plan.key) ||
+              desiredTileRingDistances.get(plan.key) !== plan.ringDistance
+            ) {
+              continue
+            }
+
+            readyTilePlans.push(plan)
+            readyTilePlanKeys.add(plan.key)
+          }
+
+          publishImmediateStats()
+        })
+        .catch(() => {
+          for (const request of requestBatch) {
+            inFlightTilePlanKeys.delete(request.key)
+          }
+
+          publishImmediateStats()
+        })
+        .finally(() => {
+          inFlightTilePlanBatchCount = Math.max(
+            0,
+            inFlightTilePlanBatchCount - 1
+          )
+          notifyQueueWaiters()
+          requestPendingTilePlans()
+          pruneObsoleteTiles()
+          publishImmediateStats()
+        })
+    }
+  }
+
+  function flushReadyTilePlans(buildAll = false) {
     let buildsRemaining = buildAll ? Number.POSITIVE_INFINITY : MAX_TILE_BUILDS_PER_FRAME
 
-    while (buildsRemaining > 0 && pendingTileBuilds.length > 0) {
-      const request = pendingTileBuilds.shift()
+    while (buildsRemaining > 0 && readyTilePlans.length > 0) {
+      const plan = readyTilePlans.shift()
 
-      if (!request) {
+      if (!plan) {
         break
       }
 
-      pendingTileBuildKeys.delete(request.key)
+      readyTilePlanKeys.delete(plan.key)
 
-      if (!desiredTileKeys.has(request.key) || tiles.has(request.key)) {
+      if (
+        !desiredTileKeys.has(plan.key) ||
+        desiredTileRingDistances.get(plan.key) !== plan.ringDistance
+      ) {
         continue
       }
 
-      const tile = buildTile(
-        request.gridX,
-        request.gridZ,
-        request.ringDistance
-      )
+      const tile = buildTileFromPlan(plan)
 
       if (!tile) {
         break
       }
 
+      const existingTile = tiles.get(tile.key)
+
+      if (existingTile) {
+        disposeTile(existingTile, false)
+      }
+
       tiles.set(tile.key, tile)
       activeTreeCount += tile.treeCount
       buildsRemaining -= 1
+      publishImmediateStats()
     }
 
     pruneObsoleteTiles()
   }
 
+  function waitForTileQueueToSettle(): Promise<void> {
+    requestPendingTilePlans()
+    flushReadyTilePlans(true)
+
+    if (
+      queuedTileRequests.length === 0 &&
+      readyTilePlans.length === 0 &&
+      inFlightTilePlanKeys.size === 0
+    ) {
+      return Promise.resolve()
+    }
+
+    return new Promise<void>((resolve) => {
+      queueWaiters.add(resolve)
+    }).then(() => waitForTileQueueToSettle())
+  }
+
   async function loadWorld(seed: number, resetToSpawn = false) {
+    worldVersion += 1
+
     for (const tile of Array.from(tiles.values())) {
-      disposeTile(tile)
+      disposeTile(tile, false)
     }
     activeTreeCount = 0
 
@@ -458,8 +636,13 @@ export async function createExploreScene(
     currentSeed = seed
     sampleHeight = createExploreTerrainHeightSampler(seed)
     desiredTileKeys.clear()
-    pendingTileBuilds = []
-    pendingTileBuildKeys.clear()
+    desiredTileRingDistances.clear()
+    queuedTileRequests = []
+    queuedTileRequestKeys.clear()
+    readyTilePlans = []
+    readyTilePlanKeys.clear()
+    inFlightTilePlanKeys.clear()
+    inFlightTilePlanBatchCount = 0
 
     if (resetToSpawn) {
       currentMovement = {
@@ -484,7 +667,8 @@ export async function createExploreScene(
     terrainMaterial = createExploreTerrainMaterial(terrainTextures)
     oakResources = await createExploreOakWorldResources()
     scheduleVisibleTiles()
-    flushPendingTileBuilds(true)
+    await waitForTileQueueToSettle()
+    flushReadyTilePlans(true)
     reportStats(true)
   }
 
@@ -506,7 +690,7 @@ export async function createExploreScene(
     }
     updateCameraLook()
     scheduleVisibleTiles()
-    flushPendingTileBuilds(true)
+    requestPendingTilePlans()
     reportStats(true)
   }
 
@@ -597,7 +781,7 @@ export async function createExploreScene(
     }
     updateCameraLook()
     scheduleVisibleTiles()
-    flushPendingTileBuilds(true)
+    requestPendingTilePlans()
     reportStats(true)
   }
 
@@ -656,7 +840,8 @@ export async function createExploreScene(
 
     updateCameraLook()
     scheduleVisibleTiles()
-    flushPendingTileBuilds()
+    requestPendingTilePlans()
+    flushReadyTilePlans()
     renderer.render(scene, camera)
     reportStats()
   })
@@ -684,7 +869,7 @@ export async function createExploreScene(
       }
 
       for (const tile of Array.from(tiles.values())) {
-        disposeTile(tile)
+        disposeTile(tile, false)
       }
 
       terrainTextures?.basecolor.dispose()
@@ -698,6 +883,7 @@ export async function createExploreScene(
         disposeExploreOakWorldResources(oakResources)
       }
 
+      tileWorker.dispose()
       renderer.dispose()
 
       if (window.__treeExploreDebug?.getSnapshot === getStats) {

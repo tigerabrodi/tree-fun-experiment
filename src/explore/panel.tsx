@@ -79,6 +79,22 @@ export function ExplorePanel({
           <span className="font-mono text-[var(--color-text)]">
             {formatInt(stats?.variantCount)}
           </span>
+          <span className="text-[var(--color-text-dim)]">Tile LOD Mid</span>
+          <span className="font-mono text-[var(--color-text)]">
+            {formatInt(stats?.midTileCount)}
+          </span>
+          <span className="text-[var(--color-text-dim)]">Tile LOD Far</span>
+          <span className="font-mono text-[var(--color-text)]">
+            {formatInt(stats?.farTileCount)}
+          </span>
+          <span className="text-[var(--color-text-dim)]">Tile LOD Ultra</span>
+          <span className="font-mono text-[var(--color-text)]">
+            {formatInt(stats?.ultraFarTileCount)}
+          </span>
+          <span className="text-[var(--color-text-dim)]">Pending Tiles</span>
+          <span className="font-mono text-[var(--color-text)]">
+            {formatInt(stats?.pendingTileCount)}
+          </span>
           <span className="text-[var(--color-text-dim)]">Pointer Lock</span>
           <span className="font-mono text-[var(--color-text)]">
             {stats?.isPointerLocked ? 'yes' : 'no'}

@@ -2,15 +2,11 @@ import { initKTX2Loader } from '@/three/textures'
 import * as THREE from 'three/webgpu'
 import { float, normalLocal, normalMap, positionLocal, texture } from 'three/tsl'
 import { EXPLORE_TERRAIN_TEXTURE_URLS } from './terrain-assets'
-import { SimplexNoise } from './simplex-noise'
-
-export const EXPLORE_TERRAIN_TILE_SIZE = 72
-export const EXPLORE_TERRAIN_CENTER_TILE_SEGMENTS = 18
-export const EXPLORE_TERRAIN_MIDDLE_TILE_SEGMENTS = 10
-export const EXPLORE_TERRAIN_OUTER_TILE_SEGMENTS = 6
-export const EXPLORE_TERRAIN_CACHE_RADIUS = 2
-export const EXPLORE_TERRAIN_CLEAR_RADIUS = 20
-export const EXPLORE_TERRAIN_TREE_MARGIN = 8
+import { EXPLORE_TERRAIN_TILE_SIZE } from './terrain-config'
+import {
+  createExploreTerrainHeightGrid,
+  type TerrainHeightSampler,
+} from './terrain-height'
 
 export interface ExploreTerrainTextures {
   basecolor: THREE.Texture
@@ -20,43 +16,28 @@ export interface ExploreTerrainTextures {
   roughness: THREE.Texture
 }
 
-export type TerrainHeightSampler = (x: number, z: number) => number
-
-function smoothstep(edge0: number, edge1: number, value: number) {
-  const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)))
-  return t * t * (3 - 2 * t)
-}
-
-export function getExploreTerrainCellIndex(position: number) {
-  return Math.floor((position + EXPLORE_TERRAIN_TILE_SIZE * 0.5) / EXPLORE_TERRAIN_TILE_SIZE)
-}
-
-export function createExploreTerrainHeightSampler(seed: number): TerrainHeightSampler {
-  const broadNoise = new SimplexNoise(`explore-broad:${seed}`)
-  const detailNoise = new SimplexNoise(`explore-detail:${seed}`)
-
-  return (x: number, z: number) => {
-    const broad =
-      broadNoise.noise3D(x * 0.0038, z * 0.0038, 11.27) * 5.8
-    const detail =
-      detailNoise.noise3D(x * 0.0105, z * 0.0105, 31.9) * 1.35
-    const ripple =
-      detailNoise.noise3D(x * 0.024, z * 0.024, 73.4) * 0.35
-    const flatten = smoothstep(
-      EXPLORE_TERRAIN_CLEAR_RADIUS * 0.45,
-      EXPLORE_TERRAIN_CLEAR_RADIUS * 1.75,
-      Math.hypot(x, z)
-    )
-
-    return (broad + detail + ripple) * flatten
-  }
-}
-
 export function createExploreTerrainTileGeometry(
   centerX: number,
   centerZ: number,
   sampleHeight: TerrainHeightSampler,
   segments: number
+) {
+  const heightGrid = createExploreTerrainHeightGrid(
+    centerX,
+    centerZ,
+    sampleHeight,
+    segments
+  )
+
+  return createExploreTerrainTileGeometryFromHeightGrid(
+    segments,
+    heightGrid
+  )
+}
+
+export function createExploreTerrainTileGeometryFromHeightGrid(
+  segments: number,
+  heightGrid: Float32Array
 ) {
   const geometry = new THREE.PlaneGeometry(
     EXPLORE_TERRAIN_TILE_SIZE,
@@ -67,13 +48,16 @@ export function createExploreTerrainTileGeometry(
   geometry.rotateX(-Math.PI / 2)
 
   const positions = geometry.getAttribute('position')
+  const halfSize = EXPLORE_TERRAIN_TILE_SIZE * 0.5
+  const step = EXPLORE_TERRAIN_TILE_SIZE / segments
 
   for (let index = 0; index < positions.count; index += 1) {
     const localX = positions.getX(index)
     const localZ = positions.getZ(index)
-    const worldX = centerX + localX
-    const worldZ = centerZ + localZ
-    positions.setY(index, sampleHeight(worldX, worldZ))
+    const column = Math.round((localX + halfSize) / step)
+    const row = Math.round((localZ + halfSize) / step)
+    const gridIndex = row * (segments + 1) + column
+    positions.setY(index, heightGrid[gridIndex] ?? 0)
   }
 
   positions.needsUpdate = true
