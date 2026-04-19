@@ -99,8 +99,8 @@ export function buildLeafMatrices(
       default:
         return {
           side: (random() - 0.5) * 2 * clusterSpread * 0.82,
-          up: (random() - 0.24) * clusterSpread * 0.68,
-          forward: (random() - 0.08) * clusterSpread * 1.15,
+          up: (random() - 0.62) * clusterSpread * 0.92,
+          forward: (random() - 0.5) * clusterSpread * 1.35,
         }
     }
   }
@@ -117,7 +117,7 @@ export function buildLeafMatrices(
         return index === 0 ? 0.9 + random() * 0.14 : 0.56 + random() * 0.32
       case 'tuft':
       default:
-        return index === 0 ? 0.94 + random() * 0.16 : 0.62 + random() * 0.3
+        return index === 0 ? 1 + random() * 0.14 : 0.6 + random() * 0.28
     }
   }
 
@@ -133,7 +133,7 @@ export function buildLeafMatrices(
         return dir.clone().lerp(basisUp, 0.3).normalize()
       case 'tuft':
       default:
-        return dir.clone().lerp(basisUp, 0.06).normalize()
+        return dir.clone().lerp(basisUp, 0.16).normalize()
     }
   }
 
@@ -149,7 +149,7 @@ export function buildLeafMatrices(
         return (random() - 0.45) * 0.45
       case 'tuft':
       default:
-        return (random() - 0.5) * 0.2
+        return (random() - 0.72) * 0.32
     }
   }
 

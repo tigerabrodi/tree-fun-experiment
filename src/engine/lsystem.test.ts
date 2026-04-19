@@ -440,4 +440,63 @@ describe('interpretLString', () => {
     expect(leaderSteps.length).toBeGreaterThanOrEqual(6)
     expect(new Set(rounded).size).toBeGreaterThanOrEqual(5)
   })
+
+  it('pine preset keeps a conical canopy instead of a top heavy clump', () => {
+    const lstring = generateLString(PINE)
+    const { leaves } = interpretLString(lstring, PINE, 42)
+    const bins = new Array(5).fill(0).map(() => ({
+      maxRadius: 0,
+      count: 0,
+    }))
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+
+    for (const leaf of leaves) {
+      minY = Math.min(minY, leaf.position.y)
+      maxY = Math.max(maxY, leaf.position.y)
+    }
+
+    const heightRange = Math.max(0.001, maxY - minY)
+
+    for (const leaf of leaves) {
+      const t = (leaf.position.y - minY) / heightRange
+      const binIndex = Math.min(bins.length - 1, Math.floor(t * bins.length))
+      const radius = Math.hypot(leaf.position.x, leaf.position.z)
+
+      bins[binIndex].count++
+      bins[binIndex].maxRadius = Math.max(bins[binIndex].maxRadius, radius)
+    }
+
+    const midRadius = Math.max(bins[1].maxRadius, bins[2].maxRadius, bins[3].maxRadius)
+    const topRadius = bins[4].maxRadius
+
+    expect(leaves.length).toBeGreaterThan(120)
+    expect(bins[4].count).toBeGreaterThan(10)
+    expect(topRadius).toBeLessThan(midRadius * 0.82)
+  })
+
+  it('pine preset keeps a rounded top view instead of a rigid x shape', () => {
+    const lstring = generateLString(PINE)
+    const { leaves } = interpretLString(lstring, PINE, 42)
+    const bins: Array<number> = Array.from({ length: 12 }, () => 0)
+
+    for (const leaf of leaves) {
+      const radius = Math.hypot(leaf.position.x, leaf.position.z)
+      if (radius < 0.12) continue
+
+      const angle =
+        (Math.atan2(leaf.position.z, leaf.position.x) + Math.PI * 2) %
+        (Math.PI * 2)
+      const bin = Math.floor((angle / (Math.PI * 2)) * bins.length)
+      bins[bin]++
+    }
+
+    const occupiedBins = bins.filter((count) => count > 6).length
+    const maxBin = Math.max(...bins)
+    const nonZeroBins: Array<number> = bins.filter((count) => count > 0)
+    const minNonZeroBin = Math.min(...nonZeroBins)
+
+    expect(occupiedBins).toBeGreaterThanOrEqual(9)
+    expect(maxBin).toBeLessThan(minNonZeroBin * 3.2)
+  })
 })

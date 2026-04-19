@@ -150,7 +150,7 @@ describe('collapseTrunkSegments', () => {
     expect(segments[0].endRadius).toBe(0.6)
   })
 
-  it('keeps fork points split instead of merging across branching nodes', () => {
+  it('keeps side branches split while merging the straight trunk through a fork', () => {
     const segments = collapseTrunkSegments([
       {
         start: { x: 0, y: 0, z: 0 },
@@ -175,7 +175,10 @@ describe('collapseTrunkSegments', () => {
       },
     ])
 
-    expect(segments).toHaveLength(3)
+    expect(segments).toHaveLength(2)
+    expect(segments.find((segment) => segment.depth === 0)?.start.y).toBe(0)
+    expect(segments.find((segment) => segment.depth === 0)?.end.y).toBe(2)
+    expect(segments.find((segment) => segment.depth === 1)?.end.x).toBe(1)
   })
 })
 

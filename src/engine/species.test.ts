@@ -47,7 +47,7 @@ describe('createForestVariantConfig', () => {
     const variant = createForestVariantConfig(PINE, 99, 1.7)
 
     expect(variant.name).toBe(PINE.name)
-    expect(variant.branchSpin).toBe(0)
+    expect(variant.branchSpin).not.toBe(0)
     expect(variant.shortStepJitter).not.toBe(PINE.shortStepJitter)
     expect(variant.angle).not.toBe(PINE.angle)
   })

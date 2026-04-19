@@ -88,11 +88,10 @@ export function collapseTrunkSegments(
 
     const segment = segments[i]
     const previousCandidates = incoming.get(pointKey(segment.start)) ?? []
-    const outgoingFromStart = outgoing.get(pointKey(segment.start)) ?? []
-    const hasMergeablePrevious =
-      previousCandidates.length === 1 &&
-      outgoingFromStart.length === 1 &&
-      canMergeSegments(segments[previousCandidates[0]], segment)
+    const mergeablePrevious = previousCandidates.filter((candidateIndex) =>
+      canMergeSegments(segments[candidateIndex], segment)
+    )
+    const hasMergeablePrevious = mergeablePrevious.length === 1
 
     if (hasMergeablePrevious) {
       continue
@@ -103,13 +102,14 @@ export function collapseTrunkSegments(
 
     while (true) {
       const nextCandidates = outgoing.get(pointKey(lastSegment.end)) ?? []
-      if (nextCandidates.length !== 1) break
+      const mergeableNext = nextCandidates.filter((candidateIndex) => {
+        if (visited.has(candidateIndex)) return false
+        return canMergeSegments(lastSegment, segments[candidateIndex])
+      })
+      if (mergeableNext.length !== 1) break
 
-      const nextIndex = nextCandidates[0]
-      if (visited.has(nextIndex)) break
-
+      const nextIndex = mergeableNext[0]
       const nextSegment = segments[nextIndex]
-      if (!canMergeSegments(lastSegment, nextSegment)) break
 
       visited.add(nextIndex)
       lastSegment = nextSegment
@@ -188,13 +188,13 @@ function buildTubeSegment(
 
   const dir = new THREE.Vector3(dx / length, dy / length, dz / length)
   const startOverlap = Math.min(
-    length * 0.28,
-    Math.max(seg.startRadius, seg.endRadius) * 0.75 +
-      Math.min(seg.startRadius, seg.endRadius) * 0.18
+    length * 0.32,
+    Math.max(seg.startRadius, seg.endRadius) * 0.9 +
+      Math.min(seg.startRadius, seg.endRadius) * 0.22
   )
   const endOverlap = Math.min(
-    length * 0.18,
-    seg.endRadius * 0.55 + seg.startRadius * 0.08
+    length * 0.26,
+    seg.endRadius * 1.05 + seg.startRadius * 0.22
   )
   const joinedStart = new THREE.Vector3(
     seg.start.x - dir.x * startOverlap,
