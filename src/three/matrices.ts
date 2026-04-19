@@ -91,15 +91,15 @@ export function buildLeafMatrices(
         }
       case 'blossom':
         return {
-          side: (random() - 0.5) * 2 * clusterSpread * 1.05,
-          up: (random() - 0.04) * clusterSpread * 1.1,
-          forward: (random() - 0.5) * 2 * clusterSpread * 0.75,
+          side: (random() - 0.5) * 2 * clusterSpread * 1.12,
+          up: (random() - 0.1) * clusterSpread * 1.06,
+          forward: (random() - 0.5) * 2 * clusterSpread * 0.82,
         }
       case 'tuft':
       default:
         return {
-          side: (random() - 0.5) * 2 * clusterSpread * 0.82,
-          up: (random() - 0.62) * clusterSpread * 0.92,
+          side: (random() - 0.5) * 2 * clusterSpread * 0.88,
+          up: (random() - 0.66) * clusterSpread * 1.06,
           forward: (random() - 0.5) * clusterSpread * 1.35,
         }
     }
@@ -114,10 +114,10 @@ export function buildLeafMatrices(
       case 'airy':
         return index === 0 ? 0.84 + random() * 0.12 : 0.42 + random() * 0.28
       case 'blossom':
-        return index === 0 ? 0.9 + random() * 0.14 : 0.56 + random() * 0.32
+        return index === 0 ? 0.98 + random() * 0.18 : 0.7 + random() * 0.3
       case 'tuft':
       default:
-        return index === 0 ? 1 + random() * 0.14 : 0.6 + random() * 0.28
+        return index === 0 ? 1.04 + random() * 0.16 : 0.68 + random() * 0.34
     }
   }
 
@@ -146,7 +146,7 @@ export function buildLeafMatrices(
       case 'airy':
         return (random() - 0.3) * 0.55
       case 'blossom':
-        return (random() - 0.45) * 0.45
+        return (random() - 0.42) * 0.4
       case 'tuft':
       default:
         return (random() - 0.72) * 0.32

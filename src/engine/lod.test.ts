@@ -38,7 +38,9 @@ describe('buildTreeLodVariant', () => {
     expect(far.renderConfig.leafTextureType).toBe(base.config.leafTextureType)
     expect(far.renderConfig.leafGeometryType).toBe(base.config.leafTextureType)
     expect(far.renderConfig.leafAlphaTest).toBeCloseTo(0.38)
-    expect(far.renderConfig.leafClusterCount).toBe(2)
+    expect(far.renderConfig.leafClusterCount).toBe(
+      Math.max(1, Math.round(base.config.leafClusterCount * 0.58))
+    )
   })
 
   it('keeps an ultra far fallback that is cheaper but still keeps some canopy mass', () => {
@@ -55,7 +57,9 @@ describe('buildTreeLodVariant', () => {
     expect(ultraFar.renderConfig.leafTextureType).toBe(base.config.leafTextureType)
     expect(ultraFar.renderConfig.leafGeometryType).toBe('single')
     expect(ultraFar.renderConfig.leafAlphaTest).toBeCloseTo(0.42)
-    expect(ultraFar.renderConfig.leafClusterCount).toBe(2)
+    expect(ultraFar.renderConfig.leafClusterCount).toBe(
+      Math.max(1, Math.round(base.config.leafClusterCount * 0.4))
+    )
   })
 
   it('is deterministic for the same base blueprint and lod level', () => {

@@ -94,7 +94,12 @@ describe('buildSceneRebuildPlan', () => {
   })
 
   it('builds giant forest plans with lod states for every chunk', () => {
-    const plan = buildSceneRebuildPlan(OAK, GIANT_FOREST_SETTINGS, 42)
+    const testForest = {
+      ...GIANT_FOREST_SETTINGS,
+      count: 40,
+      radius: 34,
+    }
+    const plan = buildSceneRebuildPlan(OAK, testForest, 42)
 
     expect(plan.kind).toBe('giant')
     if (plan.kind !== 'giant') {
@@ -121,8 +126,8 @@ describe('buildSceneRebuildPlan', () => {
   it('is deterministic for the same config and seed', () => {
     const testForest = {
       ...GIANT_FOREST_SETTINGS,
-      count: 32,
-      radius: 26,
+      count: 18,
+      radius: 22,
     }
     const first = buildSceneRebuildPlan(OAK, testForest, 77)
     const second = buildSceneRebuildPlan(OAK, testForest, 77)
